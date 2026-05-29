@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "AI Market Discover",
+  "version": "1.0.0",
+  "description": "AI powered financial dashboard",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://finnhub.io/*",
+    "https://gnews.io/*",
+    "https://api.anthropic.com/*"
+  ]
+}
