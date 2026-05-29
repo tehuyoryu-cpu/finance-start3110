@@ -1,17 +1,17 @@
-// Chrome拡張 & 通常ブラウザ両対応のストレージ
-function isChromeExt(): boolean {
-  return typeof chrome !== 'undefined' && !!chrome.storage
+// Chrome拡張 & ブラウザ両対応ストレージ
+const isChromeExt = () => {
+  try {
+    return typeof chrome !== 'undefined' && !!chrome?.storage?.local
+  } catch {
+    return false
+  }
 }
 
-export async function loadKeys(): Promise<{ finnhub: string; gnews: string; claude: string }> {
+export async function loadKeys() {
   if (isChromeExt()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(['api_finnhub', 'api_gnews', 'api_claude'], (result) => {
-        resolve({
-          finnhub: result.api_finnhub || '',
-          gnews: result.api_gnews || '',
-          claude: result.api_claude || '',
-        })
+    return new Promise<{ finnhub: string; gnews: string; claude: string }>((resolve) => {
+      chrome.storage.local.get(['api_finnhub', 'api_gnews', 'api_claude'], (r) => {
+        resolve({ finnhub: r.api_finnhub || '', gnews: r.api_gnews || '', claude: r.api_claude || '' })
       })
     })
   }
@@ -25,11 +25,7 @@ export async function loadKeys(): Promise<{ finnhub: string; gnews: string; clau
 export async function saveKeys(keys: { finnhub: string; gnews: string; claude: string }) {
   if (isChromeExt()) {
     return new Promise<void>((resolve) => {
-      chrome.storage.local.set({
-        api_finnhub: keys.finnhub,
-        api_gnews: keys.gnews,
-        api_claude: keys.claude,
-      }, resolve)
+      chrome.storage.local.set({ api_finnhub: keys.finnhub, api_gnews: keys.gnews, api_claude: keys.claude }, resolve)
     })
   }
   localStorage.setItem('api_finnhub', keys.finnhub)
@@ -37,33 +33,24 @@ export async function saveKeys(keys: { finnhub: string; gnews: string; claude: s
   localStorage.setItem('api_claude', keys.claude)
 }
 
-export async function hasAllKeys(): Promise<boolean> {
-  const k = await loadKeys()
-  return !!(k.finnhub && k.gnews && k.claude)
-}
-
-// Finnhub 株価 (無料: 60req/min)
+// Finnhub 株価
 export async function fetchQuote(symbol: string) {
   const { finnhub } = await loadKeys()
-  const res = await fetch(
-    `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhub}`
-  )
-  if (!res.ok) throw new Error('Finnhub error')
+  const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhub}`)
+  if (!res.ok) throw new Error('Finnhub API error')
   return res.json()
 }
 
-// GNews ニュース (無料: 100req/日)
+// GNews ニュース
 export async function fetchNews(query = 'stock market') {
   const { gnews } = await loadKeys()
-  const res = await fetch(
-    `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=6&token=${gnews}`
-  )
-  if (!res.ok) throw new Error('GNews error')
+  const res = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=6&token=${gnews}`)
+  if (!res.ok) throw new Error('GNews API error')
   const data = await res.json()
   return data.articles || []
 }
 
-// Claude AI 要約 (Haiku: 低コスト)
+// Claude Haiku AI要約
 export async function summarizeWithClaude(text: string): Promise<string> {
   const { claude } = await loadKeys()
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -77,17 +64,12 @@ export async function summarizeWithClaude(text: string): Promise<string> {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: `Summarize these market news headlines in 3 short bullet points (each under 20 words):\n\n${text}`,
-        },
-      ],
+      messages: [{ role: 'user', content: `Summarize in 3 bullet points (under 20 words each):\n\n${text}` }],
     }),
   })
   if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.error?.message || 'Claude error')
+    const e = await res.json()
+    throw new Error(e.error?.message || 'Claude API error')
   }
   const data = await res.json()
   return data.content[0]?.text || ''
