@@ -10,12 +10,21 @@ import NewsCluster from './components/NewsCluster'
 import Watchlist from './components/Watchlist'
 
 export default function App() {
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState<boolean | null>(null)
   const [showSetup, setShowSetup] = useState(false)
 
   useEffect(() => {
-    setReady(hasAllKeys())
+    hasAllKeys().then(setReady)
   }, [])
+
+  // ストレージ確認中はスピナー表示（真っ白防止）
+  if (ready === null) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-500 text-sm animate-pulse">Loading...</div>
+      </div>
+    )
+  }
 
   if (!ready || showSetup) {
     return (
