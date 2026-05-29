@@ -4,7 +4,6 @@ import { fetchQuote } from '../services/api'
 interface StockData {
   ticker: string
   price: number
-  change: number
   pct: number
 }
 
@@ -13,28 +12,30 @@ const TICKERS = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'GOOGL']
 export default function Watchlist() {
   const [stocks, setStocks] = useState<StockData[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     Promise.all(
       TICKERS.map(async (ticker) => {
         const q = await fetchQuote(ticker)
-        return {
-          ticker,
-          price: q.c,
-          change: q.d,
-          pct: q.dp,
-        }
+        return { ticker, price: q.c, pct: q.dp }
       })
-    ).then((data) => {
-      setStocks(data)
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    )
+      .then((data) => {
+        setStocks(data)
+        setLoading(false)
+      })
+      .catch((e: Error) => {
+        setError(e.message)
+        setLoading(false)
+      })
   }, [])
 
   return (
     <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
       <h2 className="text-xl font-bold mb-4">⭐ Watchlist</h2>
-      {loading && <div className="text-zinc-500 text-sm">取得中...</div>}
+      {loading && <div className="text-zinc-500 text-sm animate-pulse">取得中...</div>}
+      {error && <div className="text-red-400 text-sm">{error}</div>}
       <div className="space-y-3">
         {stocks.map((s) => (
           <div key={s.ticker} className="flex justify-between items-center">
