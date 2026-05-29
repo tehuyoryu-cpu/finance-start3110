@@ -1,16 +1,18 @@
-// Chrome拡張 & ブラウザ両対応ストレージ
-const isChromeExt = () => {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function getChromeStorage(): chrome.storage.LocalStorageArea | null {
   try {
-    return typeof chrome !== 'undefined' && !!chrome?.storage?.local
-  } catch {
-    return false
-  }
+    const c = (window as any).chrome
+    if (c && c.storage && c.storage.local) return c.storage.local
+  } catch {}
+  return null
 }
 
-export async function loadKeys() {
-  if (isChromeExt()) {
-    return new Promise<{ finnhub: string; gnews: string; claude: string }>((resolve) => {
-      chrome.storage.local.get(['api_finnhub', 'api_gnews', 'api_claude'], (r) => {
+export async function loadKeys(): Promise<{ finnhub: string; gnews: string; claude: string }> {
+  const storage = getChromeStorage()
+  if (storage) {
+    return new Promise((resolve) => {
+      storage.get(['api_finnhub', 'api_gnews', 'api_claude'], (r: any) => {
         resolve({ finnhub: r.api_finnhub || '', gnews: r.api_gnews || '', claude: r.api_claude || '' })
       })
     })
@@ -22,10 +24,11 @@ export async function loadKeys() {
   }
 }
 
-export async function saveKeys(keys: { finnhub: string; gnews: string; claude: string }) {
-  if (isChromeExt()) {
-    return new Promise<void>((resolve) => {
-      chrome.storage.local.set({ api_finnhub: keys.finnhub, api_gnews: keys.gnews, api_claude: keys.claude }, resolve)
+export async function saveKeys(keys: { finnhub: string; gnews: string; claude: string }): Promise<void> {
+  const storage = getChromeStorage()
+  if (storage) {
+    return new Promise((resolve) => {
+      storage.set({ api_finnhub: keys.finnhub, api_gnews: keys.gnews, api_claude: keys.claude }, resolve)
     })
   }
   localStorage.setItem('api_finnhub', keys.finnhub)
@@ -33,7 +36,12 @@ export async function saveKeys(keys: { finnhub: string; gnews: string; claude: s
   localStorage.setItem('api_claude', keys.claude)
 }
 
-// Finnhub 株価
+export async function hasAllKeys(): Promise<boolean> {
+  const k = await loadKeys()
+  return !!(k.finnhub && k.gnews && k.claude)
+}
+
+// Finnhub 株価 (無料: 60req/min)
 export async function fetchQuote(symbol: string) {
   const { finnhub } = await loadKeys()
   const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhub}`)
@@ -41,7 +49,7 @@ export async function fetchQuote(symbol: string) {
   return res.json()
 }
 
-// GNews ニュース
+// GNews ニュース (無料: 100req/日)
 export async function fetchNews(query = 'stock market') {
   const { gnews } = await loadKeys()
   const res = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=6&token=${gnews}`)
