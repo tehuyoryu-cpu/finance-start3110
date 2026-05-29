@@ -1,67 +1,46 @@
 import { useState, useEffect } from 'react'
-import { hasAllKeys } from './services/api'
 import ApiKeySetup from './components/ApiKeySetup'
-import MarketHeader from './components/MarketHeader'
-import KnowToday from './components/KnowToday'
-import SectorChart from './components/SectorChart'
-import EarningsHub from './components/EarningsHub'
-import EconomicCalendar from './components/EconomicCalendar'
-import NewsCluster from './components/NewsCluster'
-import Watchlist from './components/Watchlist'
+import Dashboard from './components/Dashboard'
+
+// Chrome拡張 & ブラウザ両対応
+async function checkKeys(): Promise<boolean> {
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+      return new Promise((resolve) => {
+        chrome.storage.local.get(['api_finnhub', 'api_gnews', 'api_claude'], (result) => {
+          resolve(!!(result.api_finnhub && result.api_gnews && result.api_claude))
+        })
+      })
+    }
+    // ブラウザ（npm run dev）
+    return !!(
+      localStorage.getItem('api_finnhub') &&
+      localStorage.getItem('api_gnews') &&
+      localStorage.getItem('api_claude')
+    )
+  } catch {
+    return false
+  }
+}
 
 export default function App() {
-  const [ready, setReady] = useState<boolean | null>(null)
-  const [showSetup, setShowSetup] = useState(false)
+  const [status, setStatus] = useState<'loading' | 'setup' | 'ready'>('loading')
 
   useEffect(() => {
-    hasAllKeys().then(setReady)
+    checkKeys().then((ok) => setStatus(ok ? 'ready' : 'setup'))
   }, [])
 
-  // ストレージ確認中はスピナー表示（真っ白防止）
-  if (ready === null) {
+  if (status === 'loading') {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-zinc-500 text-sm animate-pulse">Loading...</div>
+        <div className="text-zinc-400 text-sm">起動中...</div>
       </div>
     )
   }
 
-  if (!ready || showSetup) {
-    return (
-      <ApiKeySetup
-        onComplete={() => {
-          setReady(true)
-          setShowSetup(false)
-        }}
-      />
-    )
+  if (status === 'setup') {
+    return <ApiKeySetup onComplete={() => setStatus('ready')} />
   }
 
-  return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex justify-end">
-          <button
-            onClick={() => setShowSetup(true)}
-            className="text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded-lg px-3 py-1"
-          >
-            ⚙️ APIキー設定
-          </button>
-        </div>
-        <MarketHeader />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <KnowToday />
-            <SectorChart />
-            <NewsCluster />
-          </div>
-          <div className="space-y-6">
-            <Watchlist />
-            <EarningsHub />
-            <EconomicCalendar />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  return <Dashboard />
 }
