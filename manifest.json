@@ -6,9 +6,10 @@
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
-  "permissions": ["storage", "notifications"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://finnhub.io/*",
-    "https://newsapi.org/*"
+    "https://gnews.io/*",
+    "https://api.anthropic.com/*"
   ]
 }
