@@ -17,11 +17,10 @@ export default function KnowToday() {
 
   useEffect(() => {
     fetchNews('stock market finance')
-      .then((data) => {
+      .then((data: Article[]) => {
         setArticles(data.slice(0, 5))
         setLoading(false)
-        // AI要約を生成
-        const headlines = data.slice(0, 5).map((a: Article) => a.title).join('\n')
+        const headlines = data.slice(0, 5).map((a) => a.title).join('\n')
         setSummaryLoading(true)
         return summarizeWithClaude(headlines)
       })
@@ -29,7 +28,7 @@ export default function KnowToday() {
         setSummary(s)
         setSummaryLoading(false)
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         setError(e.message)
         setLoading(false)
         setSummaryLoading(false)
@@ -52,14 +51,18 @@ export default function KnowToday() {
         </div>
       )}
 
-      {loading && <div className="text-zinc-500 text-sm">ニュース取得中...</div>}
-      {error && <div className="text-red-400 text-sm">{error}</div>}
+      {loading && <div className="text-zinc-500 text-sm animate-pulse">ニュース取得中...</div>}
+      {error && <div className="text-red-400 text-sm">エラー: {error}</div>}
 
       <div className="space-y-4">
         {articles.map((a) => (
           <div key={a.url} className="border-b border-zinc-800 pb-4">
-            <a href={a.url} target="_blank" rel="noopener noreferrer"
-              className="font-semibold text-base hover:text-blue-300 transition-colors">
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-base hover:text-blue-300 transition-colors"
+            >
               {a.title}
             </a>
             <div className="text-zinc-400 mt-1 text-sm">{a.description}</div>
