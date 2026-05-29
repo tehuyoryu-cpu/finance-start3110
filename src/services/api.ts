@@ -1,5 +1,20 @@
-// ストレージからAPIキーを取得
-export function getKeys() {
+// Chrome拡張 & 通常ブラウザ両対応のストレージ
+function isChromeExt(): boolean {
+  return typeof chrome !== 'undefined' && !!chrome.storage
+}
+
+export async function loadKeys(): Promise<{ finnhub: string; gnews: string; claude: string }> {
+  if (isChromeExt()) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['api_finnhub', 'api_gnews', 'api_claude'], (result) => {
+        resolve({
+          finnhub: result.api_finnhub || '',
+          gnews: result.api_gnews || '',
+          claude: result.api_claude || '',
+        })
+      })
+    })
+  }
   return {
     finnhub: localStorage.getItem('api_finnhub') || '',
     gnews: localStorage.getItem('api_gnews') || '',
@@ -7,20 +22,29 @@ export function getKeys() {
   }
 }
 
-export function saveKeys(keys: { finnhub: string; gnews: string; claude: string }) {
+export async function saveKeys(keys: { finnhub: string; gnews: string; claude: string }) {
+  if (isChromeExt()) {
+    return new Promise<void>((resolve) => {
+      chrome.storage.local.set({
+        api_finnhub: keys.finnhub,
+        api_gnews: keys.gnews,
+        api_claude: keys.claude,
+      }, resolve)
+    })
+  }
   localStorage.setItem('api_finnhub', keys.finnhub)
   localStorage.setItem('api_gnews', keys.gnews)
   localStorage.setItem('api_claude', keys.claude)
 }
 
-export function hasAllKeys() {
-  const k = getKeys()
-  return k.finnhub && k.gnews && k.claude
+export async function hasAllKeys(): Promise<boolean> {
+  const k = await loadKeys()
+  return !!(k.finnhub && k.gnews && k.claude)
 }
 
 // Finnhub 株価 (無料: 60req/min)
 export async function fetchQuote(symbol: string) {
-  const { finnhub } = getKeys()
+  const { finnhub } = await loadKeys()
   const res = await fetch(
     `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhub}`
   )
@@ -30,18 +54,18 @@ export async function fetchQuote(symbol: string) {
 
 // GNews ニュース (無料: 100req/日)
 export async function fetchNews(query = 'stock market') {
-  const { gnews } = getKeys()
+  const { gnews } = await loadKeys()
   const res = await fetch(
-    `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=9&token=${gnews}`
+    `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=6&token=${gnews}`
   )
   if (!res.ok) throw new Error('GNews error')
   const data = await res.json()
   return data.articles || []
 }
 
-// Claude AI 要約 (Haiku: 低コスト、無料枠あり)
+// Claude AI 要約 (Haiku: 低コスト)
 export async function summarizeWithClaude(text: string): Promise<string> {
-  const { claude } = getKeys()
+  const { claude } = await loadKeys()
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -51,15 +75,15 @@ export async function summarizeWithClaude(text: string): Promise<string> {
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
       messages: [
         {
           role: 'user',
-          content: `Summarize these market news headlines in 3 short bullet points (each under 20 words):\n\n${text}`
-        }
-      ]
-    })
+          content: `Summarize these market news headlines in 3 short bullet points (each under 20 words):\n\n${text}`,
+        },
+      ],
+    }),
   })
   if (!res.ok) {
     const err = await res.json()
