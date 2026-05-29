@@ -1,25 +1,24 @@
-import { useState } from 'react'
-import { saveKeys, getKeys } from '../services/api'
+import { useState, useEffect } from 'react'
+import { saveKeys, loadKeys } from '../services/api'
 
 interface Props {
   onComplete: () => void
 }
 
 export default function ApiKeySetup({ onComplete }: Props) {
-  const existing = getKeys()
-  const [keys, setKeys] = useState({
-    finnhub: existing.finnhub,
-    gnews: existing.gnews,
-    claude: existing.claude,
-  })
+  const [keys, setKeys] = useState({ finnhub: '', gnews: '', claude: '' })
   const [error, setError] = useState('')
 
-  function handleSave() {
+  useEffect(() => {
+    loadKeys().then(setKeys)
+  }, [])
+
+  async function handleSave() {
     if (!keys.finnhub || !keys.gnews || !keys.claude) {
       setError('すべてのAPIキーを入力してください')
       return
     }
-    saveKeys(keys)
+    await saveKeys(keys)
     onComplete()
   }
 
@@ -92,7 +91,7 @@ export default function ApiKeySetup({ onComplete }: Props) {
         </div>
 
         <p className="text-center text-zinc-600 text-xs mt-4">
-          APIキーはブラウザのlocalStorageにのみ保存されます
+          APIキーはchrome.storage.localにのみ保存されます
         </p>
       </div>
     </div>
