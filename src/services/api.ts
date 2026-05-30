@@ -1,84 +1,176 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * src/services/api.ts
+ * siteruns23432 バックエンド（localhost）への接続 + OpenRouter AI
+ * バックエンドのポートは vite.config.ts の proxy で /api → localhost:PORT に転送
+ */
 
-function getChromeStorage(): chrome.storage.LocalStorageArea | null {
-  try {
-    const c = (window as any).chrome
-    if (c && c.storage && c.storage.local) return c.storage.local
-  } catch {}
-  return null
+// ─── バックエンドAPI ──────────────────────────────────────────────────────────
+
+export interface NewsArticle {
+  id: string
+  source_id: string
+  source_name: string
+  category: string
+  lang: string
+  title: string
+  title_ja: string | null
+  url: string
+  description: string | null
+  desc_ja: string | null
+  pub_date: number
+  content: string | null
+  content_ja: string | null
+  top_image: string | null
 }
 
-export async function loadKeys(): Promise<{ finnhub: string; gnews: string; claude: string }> {
-  const storage = getChromeStorage()
-  if (storage) {
-    return new Promise((resolve) => {
-      storage.get(['api_finnhub', 'api_gnews', 'api_claude'], (r: any) => {
-        resolve({ finnhub: r.api_finnhub || '', gnews: r.api_gnews || '', claude: r.api_claude || '' })
-      })
-    })
-  }
-  return {
-    finnhub: localStorage.getItem('api_finnhub') || '',
-    gnews: localStorage.getItem('api_gnews') || '',
-    claude: localStorage.getItem('api_claude') || '',
-  }
+export interface NewsResult {
+  articles: NewsArticle[]
+  total: number
+  page: number
+  pages: number
 }
 
-export async function saveKeys(keys: { finnhub: string; gnews: string; claude: string }): Promise<void> {
-  const storage = getChromeStorage()
-  if (storage) {
-    return new Promise((resolve) => {
-      storage.set({ api_finnhub: keys.finnhub, api_gnews: keys.gnews, api_claude: keys.claude }, resolve)
-    })
-  }
-  localStorage.setItem('api_finnhub', keys.finnhub)
-  localStorage.setItem('api_gnews', keys.gnews)
-  localStorage.setItem('api_claude', keys.claude)
+export interface NewsStats {
+  byCategory: { category: string; lang: string; n: number; translated: number }[]
+  total: number
 }
 
-export async function hasAllKeys(): Promise<boolean> {
-  const k = await loadKeys()
-  return !!(k.finnhub && k.gnews && k.claude)
+export interface StockData {
+  ticker: string
+  price: number
+  change: number
+  changePercent: number
+  high: number
+  low: number
+  open: number
+  prevClose: number
+  error?: string
 }
 
-// Finnhub 株価 (無料: 60req/min)
-export async function fetchQuote(symbol: string) {
-  const { finnhub } = await loadKeys()
-  const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhub}`)
-  if (!res.ok) throw new Error('Finnhub API error')
+export interface Prefs {
+  searchEngine: string
+  searchEngineNews: string
+  readerTheme: string
+  readerFontSize: number
+}
+
+// ─── News API ─────────────────────────────────────────────────────────────────
+
+export async function fetchNews(params: {
+  category?: string
+  lang?: string
+  page?: number
+  limit?: number
+  q?: string
+  source?: string
+} = {}): Promise<NewsResult> {
+  const p = new URLSearchParams()
+  if (params.category) p.set('category', params.category)
+  if (params.lang)     p.set('lang', params.lang)
+  if (params.page)     p.set('page', String(params.page))
+  if (params.limit)    p.set('limit', String(params.limit))
+  if (params.q)        p.set('q', params.q)
+  if (params.source)   p.set('source', params.source)
+  const res = await fetch('/api/news?' + p)
+  if (!res.ok) throw new Error('news API error')
   return res.json()
 }
 
-// GNews ニュース (無料: 100req/日)
-export async function fetchNews(query = 'stock market') {
-  const { gnews } = await loadKeys()
-  const res = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=6&token=${gnews}`)
-  if (!res.ok) throw new Error('GNews API error')
-  const data = await res.json()
-  return data.articles || []
+export async function fetchNewsStats(): Promise<NewsStats> {
+  const res = await fetch('/api/news/stats')
+  if (!res.ok) throw new Error('news stats API error')
+  return res.json()
 }
 
-// Claude Haiku AI要約
-export async function summarizeWithClaude(text: string): Promise<string> {
-  const { claude } = await loadKeys()
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+export async function fetchArticleContent(id: string): Promise<{
+  content: string | null
+  content_ja: string | null
+  top_image: string | null
+  error?: string
+}> {
+  const res = await fetch(`/api/news/${encodeURIComponent(id)}/content`)
+  if (!res.ok) throw new Error('content API error')
+  return res.json()
+}
+
+// ─── Stocks API ───────────────────────────────────────────────────────────────
+
+export async function fetchStockTickers(): Promise<string[]> {
+  const res = await fetch('/api/stocks')
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.tickers || []
+}
+
+export async function saveStockTickers(tickers: string[]): Promise<void> {
+  await fetch('/api/stocks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tickers }),
+  })
+}
+
+// 株価はYahoo Finance非公式エンドポイント経由（バックエンドに/api/quote追加予定）
+// フォールバックとしてFinnhubも使用
+export async function fetchQuote(ticker: string): Promise<StockData> {
+  const res = await fetch(`/api/quote?ticker=${encodeURIComponent(ticker)}`)
+  if (!res.ok) throw new Error('quote error')
+  return res.json()
+}
+
+// ─── Prefs API ────────────────────────────────────────────────────────────────
+
+export async function fetchPrefs(): Promise<Prefs> {
+  const res = await fetch('/api/prefs')
+  if (!res.ok) return { searchEngine: 'google', searchEngineNews: 'google', readerTheme: 'light', readerFontSize: 15 }
+  return res.json()
+}
+
+export async function savePrefs(prefs: Partial<Prefs>): Promise<void> {
+  await fetch('/api/prefs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs),
+  })
+}
+
+// ─── 検索エンジン ─────────────────────────────────────────────────────────────
+
+export const SEARCH_ENGINES: Record<string, (q: string) => string> = {
+  google:     q => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
+  bing:       q => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+  duckduckgo: q => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+  brave:      q => `https://search.brave.com/search?q=${encodeURIComponent(q)}`,
+  yahoo_jp:   q => `https://search.yahoo.co.jp/search?p=${encodeURIComponent(q)}`,
+  startpage:  q => `https://www.startpage.com/search?q=${encodeURIComponent(q)}`,
+  ecosia:     q => `https://www.ecosia.org/search?q=${encodeURIComponent(q)}`,
+}
+
+export function buildSearchUrl(query: string, engine = 'google'): string {
+  return (SEARCH_ENGINES[engine] || SEARCH_ENGINES.google)(query)
+}
+
+// ─── OpenRouter AI（Qwen3 free） ──────────────────────────────────────────────
+
+export async function summarizeWithAI(text: string): Promise<string> {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': claude,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY || ''}`,
+      'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+      'X-Title': 'Finance Start',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: `Summarize in 3 bullet points (under 20 words each):\n\n${text}` }],
+      model: 'qwen/qwen3-next-80b-a3b-instruct:free',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `以下のニュースタイトルを3〜5行の日本語で要約してください。箇条書きで。\n\n${text}`,
+      }],
     }),
   })
-  if (!res.ok) {
-    const e = await res.json()
-    throw new Error(e.error?.message || 'Claude API error')
-  }
+  if (!res.ok) throw new Error('AI API error')
   const data = await res.json()
-  return data.content[0]?.text || ''
+  return data.choices?.[0]?.message?.content || ''
 }
