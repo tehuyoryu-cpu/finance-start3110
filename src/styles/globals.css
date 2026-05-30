@@ -1,3 +1,69 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── スクロールバー ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #18181b; }
+::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+/* ── アニメーション ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+@keyframes gradientShift {
+  0%,100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.85) translateY(10px); }
+  70%  { transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes flashGreen {
+  0%   { background: rgba(74,222,128,.2); }
+  100% { background: transparent; }
+}
+@keyframes flashRed {
+  0%   { background: rgba(248,113,113,.2); }
+  100% { background: transparent; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse-bar {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .5; }
+}
+
+.animate-fade-up   { animation: fadeInUp .35s ease both; }
+.animate-fade-scale { animation: fadeInScale .3s ease both; }
+.animate-pop-in    { animation: popIn .3s cubic-bezier(.34,1.56,.64,1) both; }
+.animate-shimmer {
+  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+.flash-green { animation: flashGreen .7s ease; }
+.flash-red   { animation: flashRed .7s ease; }
+
+/* stagger helper */
+.stagger > *:nth-child(1)  { animation-delay: .00s }
+.stagger > *:nth-child(2)  { animation-delay: .04s }
+.stagger > *:nth-child(3)  { animation-delay: .08s }
+.stagger > *:nth-child(4)  { animation-delay: .12s }
+.stagger > *:nth-child(5)  { animation-delay: .16s }
+.stagger > *:nth-child(6)  { animation-delay: .20s }
+.stagger > *:nth-child(7)  { animation-delay: .23s }
+.stagger > *:nth-child(8)  { animation-delay: .26s }
+.stagger > *:nth-child(n+9){ animation-delay: .28s }
