@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { fetchStockTickers, saveStockTickers, fetchQuote, type StockData } from '../services/api'
+import StockChart from './StockChart'
 
 export default function Watchlist() {
   const [tickers, setTickers]     = useState<string[]>([])
   const [stocks, setStocks]       = useState<Record<string, StockData & { flash?: 'up' | 'down' }>>({})
   const [input, setInput]         = useState('')
   const [loading, setLoading]     = useState(true)
+  const [chartTicker, setChartTicker] = useState<string | null>(null)
   const prevPrices                = useRef<Record<string, number>>({})
   const timerRef                  = useRef<ReturnType<typeof setInterval>>()
 
@@ -60,6 +62,14 @@ export default function Watchlist() {
 
   return (
     <div className="bg-zinc-900 rounded-2xl p-5 border border-zinc-800">
+      {chartTicker && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+             onClick={e => e.target === e.currentTarget && setChartTicker(null)}>
+          <div className="w-full max-w-2xl animate-pop-in">
+            <StockChart ticker={chartTicker} onClose={() => setChartTicker(null)} />
+          </div>
+        </div>
+      )}
       <h2 className="text-lg font-bold mb-4">⭐ ウォッチリスト</h2>
 
       {/* 追加フォーム */}
@@ -89,10 +99,10 @@ export default function Watchlist() {
               className={`animate-fade-up flex items-center gap-2 p-2 rounded-xl transition-all
                 ${s?.flash === 'up' ? 'flash-green' : s?.flash === 'down' ? 'flash-red' : ''}
                 hover:bg-zinc-800`}>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-sm">{t}</div>
+              <div className="flex-1 min-w-0 cursor-default" onClick={() => setChartTicker(t)}>
+                <div className="font-bold text-sm hover:text-blue-400 transition-colors">{t}</div>
                 <div className="text-xs text-zinc-500">
-                  {s?.price ? `$${s.price.toFixed(2)}` : '---'}
+                  {s?.price ? s.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '---'}
                 </div>
               </div>
               <div className={`text-sm font-semibold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
