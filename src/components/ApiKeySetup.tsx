@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 const STORAGE_KEY = 'openrouter_key'
 
 export function loadOpenRouterKey(): string {
-  return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_OPENROUTER_KEY || ''
+  return localStorage.getItem(STORAGE_KEY) || (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
 }
 
 export function saveOpenRouterKey(key: string): void {
