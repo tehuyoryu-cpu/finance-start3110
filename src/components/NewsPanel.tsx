@@ -111,9 +111,9 @@ export default function NewsPanel({ prefs }: Props) {
               {a.title_ja && a.title !== a.title_ja && (
                 <p className="text-xs text-zinc-500 mt-0.5">{a.title}</p>
               )}
-              {(a.desc_ja || a.description) && (
+              {a.description && (
                 <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                  {a.desc_ja || a.description}
+                  {a.description}
                 </p>
               )}
             </article>
@@ -146,9 +146,8 @@ export default function NewsPanel({ prefs }: Props) {
 
 // ─── リーダーモーダル ─────────────────────────────────────────────────────────
 function ReaderModal({ article, prefs, onClose }: { article: NewsArticle; prefs: Prefs; onClose: () => void }) {
-  const [content, setContent]   = useState<{ content_ja: string | null; content: string | null; top_image: string | null; error?: string } | null>(null)
+  const [content, setContent]   = useState<{ content: string | null; top_image: string | null; error?: string } | null>(null)
   const [loading, setLoading]   = useState(true)
-  const [lang, setLang]         = useState<'ja' | 'orig'>('ja')
   const [theme, setTheme]       = useState(prefs.readerTheme || 'dark')
   const [fontSize, setFontSize] = useState(prefs.readerFontSize || 15)
 
@@ -162,8 +161,8 @@ function ReaderModal({ article, prefs, onClose }: { article: NewsArticle; prefs:
                    : theme === 'sepia' ? 'bg-amber-50 text-amber-900'
                    : 'bg-zinc-900 text-zinc-100'
 
-  const title = lang === 'ja' ? (article.title_ja || article.title) : article.title
-  const body  = lang === 'ja' ? (content?.content_ja || content?.content || '') : (content?.content || '')
+  const title = article.title_ja || article.title
+  const body  = content?.content || ''
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-scale"
@@ -173,13 +172,7 @@ function ReaderModal({ article, prefs, onClose }: { article: NewsArticle; prefs:
         <div className="flex items-center gap-2 p-3 bg-zinc-950 text-white flex-shrink-0">
           <span className="flex-1 text-xs font-bold truncate">{title}</span>
           <div className="flex gap-1 flex-shrink-0">
-            {/* 言語切替 */}
-            {['ja','orig'].map(l => (
-              <button key={l} onClick={() => setLang(l as 'ja'|'orig')}
-                className={`text-xs px-2 py-0.5 rounded transition-colors ${lang === l ? 'bg-blue-600' : 'bg-zinc-700 hover:bg-zinc-600'}`}>
-                {l === 'ja' ? '日本語' : '原文'}
-              </button>
-            ))}
+
             {/* テーマ */}
             {(['dark','light','sepia'] as const).map(t => (
               <button key={t} onClick={() => setTheme(t)}
