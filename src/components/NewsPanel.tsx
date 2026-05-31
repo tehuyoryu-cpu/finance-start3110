@@ -153,7 +153,7 @@ function ReaderModal({ article, prefs, onClose }: { article: NewsArticle; prefs:
   const [fontSize, setFontSize] = useState(prefs.readerFontSize || 15)
 
   useEffect(() => {
-    fetchArticleContent(article.id)
+    fetchArticleContent(article.url)
       .then(d => { setContent(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [article.id])
