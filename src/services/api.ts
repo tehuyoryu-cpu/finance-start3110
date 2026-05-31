@@ -69,10 +69,13 @@ export interface Prefs {
   readerFontSize: number
 }
 
-// ─── CORS Proxy ───────────────────────────────────────────────────────────────
-// allorigins.win: 無料のCORSプロキシ
-const PROXY = (url: string) =>
-  `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+// ─── プロキシ設定 ────────────────────────────────────────────────────────────
+// Yahoo Finance: Vite dev serverのプロキシ経由（本番はnodeサーバー経由）
+const YAHOO_BASE = '/proxy/yahoo'
+
+// RSS: rss2json.com 無料API（500リクエスト/日）
+const RSS2JSON = (url: string) =>
+  `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}&count=10`
 
 // ─── RSS ニュースソース ────────────────────────────────────────────────────────
 
@@ -188,10 +191,36 @@ async function _fetchSourceNews(source: typeof NEWS_SOURCES[0]): Promise<NewsArt
   if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.articles
 
   try {
-    const res = await fetch(PROXY(source.url), { signal: AbortSignal.timeout(8000) })
+    // rss2json.com 経由でRSS取得（CORSフリー）
+    const res = await fetch(RSS2JSON(source.url), { signal: AbortSignal.timeout(10000) })
     if (!res.ok) return []
-    const xml = await res.text()
-    const articles = _parseRss(xml, source, 8)
+    const data = await res.json()
+    if (data.status !== 'ok') return []
+
+    const articles: NewsArticle[] = (data.items || []).slice(0, 8).map((item: {
+      title?: string; link?: string; pubDate?: string;
+      description?: string; thumbnail?: string; enclosure?: { link?: string }
+    }, i: number) => {
+      const title = _decodeHtml((item.title || '').replace(/<[^>]+>/g, '').trim())
+      const url   = item.link || ''
+      const desc  = _decodeHtml((item.description || '').replace(/<[^>]+>/g, '').trim()).slice(0, 300)
+      const img   = item.thumbnail || item.enclosure?.link || null
+      const pub   = item.pubDate ? Math.floor(new Date(item.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000)
+      return {
+        id:          source.id + ':' + _hashStr(url || String(i)),
+        source_id:   source.id,
+        source_name: source.name,
+        category:    source.category,
+        lang:        source.lang,
+        title,
+        url,
+        description: desc || null,
+        pub_date:    pub,
+        top_image:   img,
+        title_ja:    null,
+      }
+    })
+
     _newsCache.set(source.id, { ts: Date.now(), articles })
     return articles
   } catch {
@@ -252,11 +281,13 @@ export async function fetchArticleContent(url: string): Promise<{
   top_image: string | null
   error?: string
 }> {
+  // 記事本文はCORSの関係で直接取得できないため、
+  // descriptionをそのまま返す（呼び出し元でdescriptionをfallbackとして使う）
   try {
-    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(12000) })
-    if (!res.ok) throw new Error('HTTP ' + res.status)
-    const html = await res.text()
-    return _extractArticleContent(html)
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000), mode: 'no-cors' })
+    // no-corsではレスポンスボディが読めないのでエラー扱い
+    void res
+    throw new Error('CORS制限のため本文を取得できません')
   } catch (e: unknown) {
     return { content: null, top_image: null, error: e instanceof Error ? e.message : String(e) }
   }
@@ -314,9 +345,9 @@ export async function fetchQuote(ticker: string): Promise<StockData> {
   const cached = _quoteCache.get(ticker)
   if (cached && Date.now() - cached.ts < QUOTE_TTL) return cached.data
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
+  const url = `${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
   try {
-    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(8000) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error('HTTP ' + res.status)
     const json = await res.json()
     const meta = json?.chart?.result?.[0]?.meta
@@ -359,9 +390,9 @@ export async function fetchChart(ticker: string, range = '1mo', interval = '1d')
   const cached = _chartCache.get(key)
   if (cached && Date.now() - cached.ts < ttl) return cached.data
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`
+  const url = `${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`
   try {
-    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(10000) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
     if (!res.ok) throw new Error('HTTP ' + res.status)
     const json = await res.json()
     const result     = json?.chart?.result?.[0]
