@@ -1,10 +1,14 @@
 /**
  * src/services/api.ts
- * siteruns23432 バックエンド（localhost）への接続 + OpenRouter AI
- * バックエンドのポートは vite.config.ts の proxy で /api → localhost:PORT に転送
+ * siteruns23432 完全非依存。全てフロントエンドから直接取得。
+ * - ニュース: RSSフィード → allorigins.win CORS proxy 経由
+ * - 株価/チャート: Yahoo Finance v8 非公式API → allorigins proxy 経由
+ * - prefs: localStorage
+ * - 記事本文: 元URL → allorigins proxy → Readability的テキスト抽出
+ * - AI要約: OpenRouter (Qwen3 free)
  */
 
-// ─── バックエンドAPI ──────────────────────────────────────────────────────────
+// ─── 型定義 ──────────────────────────────────────────────────────────────────
 
 export interface NewsArticle {
   id: string
@@ -16,10 +20,7 @@ export interface NewsArticle {
   title_ja: string | null
   url: string
   description: string | null
-  desc_ja: string | null
   pub_date: number
-  content: string | null
-  content_ja: string | null
   top_image: string | null
 }
 
@@ -28,11 +29,6 @@ export interface NewsResult {
   total: number
   page: number
   pages: number
-}
-
-export interface NewsStats {
-  byCategory: { category: string; lang: string; n: number; translated: number }[]
-  total: number
 }
 
 export interface StockData {
@@ -50,6 +46,22 @@ export interface StockData {
   error?: string
 }
 
+export interface ChartPoint {
+  t: number
+  close: number
+  high: number | null
+  low: number | null
+  volume: number | null
+}
+
+export interface ChartData {
+  ticker: string
+  range: string
+  interval: string
+  points: ChartPoint[]
+  error?: string
+}
+
 export interface Prefs {
   searchEngine: string
   searchEngineNews: string
@@ -57,7 +69,135 @@ export interface Prefs {
   readerFontSize: number
 }
 
-// ─── News API ─────────────────────────────────────────────────────────────────
+// ─── CORS Proxy ───────────────────────────────────────────────────────────────
+// allorigins.win: 無料のCORSプロキシ
+const PROXY = (url: string) =>
+  `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+
+// ─── RSS ニュースソース ────────────────────────────────────────────────────────
+
+const NEWS_SOURCES = [
+  // カルチャー
+  { id: 'netorabo',    name: 'ねとらぼ',         url: 'https://nlab.itmedia.co.jp/rss/2.0/index.rdf',     lang: 'ja', category: 'culture' },
+  { id: 'kai_you',     name: 'KAI-YOU',           url: 'https://kai-you.net/feed',                          lang: 'ja', category: 'culture' },
+  { id: 'mashable',    name: 'Mashable',           url: 'https://mashable.com/feeds/rss/all',                lang: 'en', category: 'culture' },
+  // テック
+  { id: 'techcrunch',  name: 'TechCrunch',         url: 'https://techcrunch.com/feed/',                      lang: 'en', category: 'tech' },
+  { id: 'theverge',    name: 'The Verge',          url: 'https://www.theverge.com/rss/index.xml',            lang: 'en', category: 'tech' },
+  { id: 'gigazine',    name: 'GIGAZINE',           url: 'https://gigazine.net/news/rss_2.0/',                lang: 'ja', category: 'tech' },
+  { id: 'itmedia',     name: 'ITmedia',            url: 'https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml', lang: 'ja', category: 'tech' },
+  { id: 'wired',       name: 'Wired',              url: 'https://www.wired.com/feed/rss',                    lang: 'en', category: 'tech' },
+  { id: 'arstechnica', name: 'Ars Technica',       url: 'https://feeds.arstechnica.com/arstechnica/index',   lang: 'en', category: 'tech' },
+  { id: 'venturebeat', name: 'VentureBeat',        url: 'https://venturebeat.com/feed/',                     lang: 'en', category: 'tech' },
+  // ビジネス
+  { id: 'reuters',     name: 'Reuters',            url: 'https://feeds.reuters.com/reuters/topNews',          lang: 'en', category: 'business' },
+  { id: 'cnbc',        name: 'CNBC',               url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', lang: 'en', category: 'business' },
+  { id: 'toyokeizai',  name: '東洋経済',            url: 'https://toyokeizai.net/list/feed/rss',               lang: 'ja', category: 'business' },
+  { id: 'forbesjp',    name: 'Forbes Japan',       url: 'https://forbesjapan.com/feed',                      lang: 'ja', category: 'business' },
+  // ゲーム
+  { id: 'ign',         name: 'IGN',                url: 'https://www.ign.com/rss/articles',                  lang: 'en', category: 'game' },
+  { id: 'polygon',     name: 'Polygon',            url: 'https://www.polygon.com/rss/index.xml',             lang: 'en', category: 'game' },
+  { id: 'famitsu',     name: 'Famitsu',            url: 'https://www.famitsu.com/rss/famitsu/all.xml',       lang: 'ja', category: 'game' },
+  // アニメ
+  { id: 'ann',         name: 'Anime News Network', url: 'https://www.animenewsnetwork.com/all/rss.xml',      lang: 'en', category: 'anime' },
+  { id: 'comicnatalie',name: 'コミックナタリー',    url: 'https://natalie.mu/comic/feed/news',                 lang: 'ja', category: 'anime' },
+  // エンタメ
+  { id: 'variety',     name: 'Variety',            url: 'https://variety.com/feed/',                         lang: 'en', category: 'entertainment' },
+  { id: 'deadline',    name: 'Deadline',           url: 'https://deadline.com/feed/',                        lang: 'en', category: 'entertainment' },
+  // 音楽
+  { id: 'billboard',   name: 'Billboard',          url: 'https://www.billboard.com/feed/',                   lang: 'en', category: 'music' },
+  { id: 'pitchfork',   name: 'Pitchfork',          url: 'https://pitchfork.com/rss/news/',                   lang: 'en', category: 'music' },
+  // 科学
+  { id: 'spacecom',    name: 'Space.com',          url: 'https://www.space.com/feeds/all',                   lang: 'en', category: 'science' },
+  { id: 'nasa',        name: 'NASA',               url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss',    lang: 'en', category: 'science' },
+]
+
+// ─── RSSパーサー（純JS、依存ゼロ） ───────────────────────────────────────────
+
+function _hashStr(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
+  return h.toString(36)
+}
+
+function _extractText(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>\\s*(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?\\s*<\\/${tag}>`, 'i'))
+  return m ? m[1].trim() : ''
+}
+
+function _extractLink(entry: string, isAtom: boolean): string {
+  if (isAtom) {
+    const m = entry.match(/<link[^>]+href=["']([^"']+)["']/i)
+    if (m) return m[1]
+  }
+  return _extractText(entry, 'link') || entry.match(/<link>([^<]+)<\/link>/i)?.[1] || ''
+}
+
+function _decodeHtml(s: string): string {
+  return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+          .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ')
+          .replace(/&#(\d+);/g, (_,n) => String.fromCharCode(parseInt(n,10)))
+}
+
+function _stripTags(s: string): string {
+  return s.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()
+}
+
+function _parseRss(xml: string, source: typeof NEWS_SOURCES[0], maxItems = 10): NewsArticle[] {
+  const isAtom = xml.includes('<feed')
+  const tag    = isAtom ? 'entry' : 'item'
+  const re     = new RegExp(`<${tag}[\\s>]([\\s\\S]*?)<\\/${tag}>`, 'gi')
+  const items: NewsArticle[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(xml)) !== null && items.length < maxItems) {
+    const entry = m[1]
+    const title = _decodeHtml(_extractText(entry, 'title'))
+    const link  = _extractLink(entry, isAtom)
+    if (!title || !link) continue
+    const pub   = _extractText(entry, isAtom ? 'published' : 'pubDate') || _extractText(entry, 'dc:date')
+    const desc  = _decodeHtml(_stripTags(_extractText(entry, isAtom ? 'summary' : 'description'))).slice(0, 300)
+    const guid  = _extractText(entry, 'guid') || _extractText(entry, 'id') || link
+    const img   = entry.match(/url=["']([^"']+\.(jpg|jpeg|png|webp))[^"']*/i)?.[1] ||
+                  entry.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)?.[1] ||
+                  entry.match(/<enclosure[^>]+url=["']([^"']+)["']/i)?.[1] || null
+    items.push({
+      id:          source.id + ':' + _hashStr(guid),
+      source_id:   source.id,
+      source_name: source.name,
+      category:    source.category,
+      lang:        source.lang,
+      title,
+      url:         link,
+      description: desc || null,
+      pub_date:    pub ? Math.floor(new Date(pub).getTime() / 1000) : Math.floor(Date.now() / 1000),
+      top_image:   img,
+      title_ja:    null,
+    })
+  }
+  return items
+}
+
+// ─── ニュース取得（RSSを直接fetch） ──────────────────────────────────────────
+
+// メモリキャッシュ（10分TTL）
+const _newsCache = new Map<string, { ts: number; articles: NewsArticle[] }>()
+const NEWS_TTL = 10 * 60 * 1000
+
+async function _fetchSourceNews(source: typeof NEWS_SOURCES[0]): Promise<NewsArticle[]> {
+  const cached = _newsCache.get(source.id)
+  if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.articles
+
+  try {
+    const res = await fetch(PROXY(source.url), { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return []
+    const xml = await res.text()
+    const articles = _parseRss(xml, source, 8)
+    _newsCache.set(source.id, { ts: Date.now(), articles })
+    return articles
+  } catch {
+    return []
+  }
+}
 
 export async function fetchNews(params: {
   category?: string
@@ -65,76 +205,221 @@ export async function fetchNews(params: {
   page?: number
   limit?: number
   q?: string
-  source?: string
 } = {}): Promise<NewsResult> {
-  const p = new URLSearchParams()
-  if (params.category) p.set('category', params.category)
-  if (params.lang)     p.set('lang', params.lang)
-  if (params.page)     p.set('page', String(params.page))
-  if (params.limit)    p.set('limit', String(params.limit))
-  if (params.q)        p.set('q', params.q)
-  if (params.source)   p.set('source', params.source)
-  const res = await fetch('/api/news?' + p)
-  if (!res.ok) throw new Error('news API error')
-  return res.json()
+  const { category, lang, page = 1, limit = 20, q } = params
+
+  // 対象ソースを絞り込み
+  let sources = NEWS_SOURCES
+  if (category) sources = sources.filter(s => s.category === category)
+  if (lang)     sources = sources.filter(s => s.lang === lang)
+
+  // 並列fetch（最大8ソース同時）
+  const chunks: typeof NEWS_SOURCES[] = []
+  for (let i = 0; i < sources.length; i += 8) chunks.push(sources.slice(i, i + 8))
+
+  let all: NewsArticle[] = []
+  for (const chunk of chunks) {
+    const results = await Promise.allSettled(chunk.map(s => _fetchSourceNews(s)))
+    results.forEach(r => { if (r.status === 'fulfilled') all.push(...r.value) })
+  }
+
+  // 新しい順にソート
+  all.sort((a, b) => b.pub_date - a.pub_date)
+
+  // キーワード検索
+  if (q) {
+    const lq = q.toLowerCase()
+    all = all.filter(a =>
+      a.title.toLowerCase().includes(lq) ||
+      (a.description || '').toLowerCase().includes(lq)
+    )
+  }
+
+  const total = all.length
+  const start = (page - 1) * limit
+  return {
+    articles: all.slice(start, start + limit),
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  }
 }
 
-export async function fetchNewsStats(): Promise<NewsStats> {
-  const res = await fetch('/api/news/stats')
-  if (!res.ok) throw new Error('news stats API error')
-  return res.json()
-}
+// ─── 記事本文取得（元URLを直接fetch → テキスト抽出） ─────────────────────────
 
-export async function fetchArticleContent(id: string): Promise<{
+export async function fetchArticleContent(url: string): Promise<{
   content: string | null
-  content_ja: string | null
   top_image: string | null
   error?: string
 }> {
-  const res = await fetch(`/api/news/${encodeURIComponent(id)}/content`)
-  if (!res.ok) throw new Error('content API error')
-  return res.json()
+  try {
+    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(12000) })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const html = await res.text()
+    return _extractArticleContent(html)
+  } catch (e: unknown) {
+    return { content: null, top_image: null, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
-// ─── Stocks API ───────────────────────────────────────────────────────────────
+function _extractArticleContent(html: string) {
+  // OGP画像
+  const imgMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+                   html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+  const top_image = imgMatch?.[1] || null
 
-export async function fetchStockTickers(): Promise<string[]> {
-  const res = await fetch('/api/stocks')
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.tickers || []
+  // 不要タグを削除
+  let body = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+
+  // 本文候補タグから抽出
+  const candidates = [
+    /<article[^>]*>([\s\S]*?)<\/article>/i,
+    /<main[^>]*>([\s\S]*?)<\/main>/i,
+    /class="[^"]*(?:article|post|entry|content|story)[^"]*"[^>]*>([\s\S]{500,}?)<\/(?:div|section|article)>/i,
+  ]
+  let content = ''
+  for (const re of candidates) {
+    const m = body.match(re)
+    if (m && m[1].length > 300) { content = m[1]; break }
+  }
+  if (!content) content = body
+
+  // タグを除去してテキスト化
+  const text = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return { content: text.length > 100 ? text : null, top_image }
 }
 
-export async function saveStockTickers(tickers: string[]): Promise<void> {
-  await fetch('/api/stocks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tickers }),
-  })
-}
+// ─── 株価（Yahoo Finance v8 直接fetch） ──────────────────────────────────────
 
-// 株価はYahoo Finance非公式エンドポイント経由（バックエンドに/api/quote追加予定）
-// フォールバックとしてFinnhubも使用
+const _quoteCache = new Map<string, { ts: number; data: StockData }>()
+const QUOTE_TTL = 3 * 60 * 1000
+
 export async function fetchQuote(ticker: string): Promise<StockData> {
-  const res = await fetch(`/api/quote?ticker=${encodeURIComponent(ticker)}`)
-  if (!res.ok) throw new Error('quote error')
-  return res.json()
+  const cached = _quoteCache.get(ticker)
+  if (cached && Date.now() - cached.ts < QUOTE_TTL) return cached.data
+
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
+  try {
+    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const json = await res.json()
+    const meta = json?.chart?.result?.[0]?.meta
+    if (!meta) throw new Error('no data')
+
+    const price     = meta.regularMarketPrice ?? 0
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? price
+    const change    = price - prevClose
+    const changePct = prevClose ? (change / prevClose) * 100 : 0
+
+    const data: StockData = {
+      ticker,
+      price,
+      change:        Math.round(change * 100) / 100,
+      changePercent: Math.round(changePct * 100) / 100,
+      high:          meta.regularMarketDayHigh  ?? price,
+      low:           meta.regularMarketDayLow   ?? price,
+      open:          meta.regularMarketOpen     ?? price,
+      prevClose,
+      currency:      meta.currency    ?? 'USD',
+      marketState:   meta.marketState ?? 'CLOSED',
+      shortName:     meta.shortName   ?? ticker,
+    }
+    _quoteCache.set(ticker, { ts: Date.now(), data })
+    return data
+  } catch (e: unknown) {
+    return { ticker, price: 0, change: 0, changePercent: 0,
+             high: 0, low: 0, open: 0, prevClose: 0,
+             error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
-// ─── Prefs API ────────────────────────────────────────────────────────────────
+// ─── チャート（Yahoo Finance v8 直接fetch） ───────────────────────────────────
 
-export async function fetchPrefs(): Promise<Prefs> {
-  const res = await fetch('/api/prefs')
-  if (!res.ok) return { searchEngine: 'google', searchEngineNews: 'google', readerTheme: 'light', readerFontSize: 15 }
-  return res.json()
+const _chartCache = new Map<string, { ts: number; data: ChartData }>()
+
+export async function fetchChart(ticker: string, range = '1mo', interval = '1d'): Promise<ChartData> {
+  const key = `${ticker}:${range}:${interval}`
+  const ttl = range === '1d' ? 60000 : 10 * 60 * 1000
+  const cached = _chartCache.get(key)
+  if (cached && Date.now() - cached.ts < ttl) return cached.data
+
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`
+  try {
+    const res = await fetch(PROXY(url), { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const json = await res.json()
+    const result     = json?.chart?.result?.[0]
+    const timestamps = result?.timestamp ?? []
+    const q          = result?.indicators?.quote?.[0] ?? {}
+
+    const points: ChartPoint[] = (timestamps as number[]).map((t: number, i: number) => ({
+      t:      t * 1000,
+      close:  q.close?.[i]  ?? null,
+      high:   q.high?.[i]   ?? null,
+      low:    q.low?.[i]    ?? null,
+      volume: q.volume?.[i] ?? null,
+    })).filter((p): p is ChartPoint => p.close !== null)
+
+    const data: ChartData = { ticker, range, interval, points }
+    _chartCache.set(key, { ts: Date.now(), data })
+    return data
+  } catch (e: unknown) {
+    return { ticker, range, interval, points: [],
+             error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
-export async function savePrefs(prefs: Partial<Prefs>): Promise<void> {
-  await fetch('/api/prefs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(prefs),
-  })
+// ─── ウォッチリスト（localStorage） ──────────────────────────────────────────
+
+const TICKERS_KEY = 'watchlist_tickers'
+
+export function fetchStockTickers(): Promise<string[]> {
+  try {
+    const raw = localStorage.getItem(TICKERS_KEY)
+    return Promise.resolve(raw ? JSON.parse(raw) : [])
+  } catch { return Promise.resolve([]) }
+}
+
+export function saveStockTickers(tickers: string[]): Promise<void> {
+  localStorage.setItem(TICKERS_KEY, JSON.stringify(tickers))
+  return Promise.resolve()
+}
+
+// ─── Prefs（localStorage） ────────────────────────────────────────────────────
+
+const PREFS_KEY = 'app_prefs'
+const DEFAULT_PREFS: Prefs = {
+  searchEngine: 'google', searchEngineNews: 'google',
+  readerTheme: 'dark', readerFontSize: 15,
+}
+
+export function fetchPrefs(): Promise<Prefs> {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY)
+    return Promise.resolve(raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_PREFS })
+  } catch { return Promise.resolve({ ...DEFAULT_PREFS }) }
+}
+
+export function savePrefs(prefs: Partial<Prefs>): Promise<void> {
+  const current = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')
+  localStorage.setItem(PREFS_KEY, JSON.stringify({ ...DEFAULT_PREFS, ...current, ...prefs }))
+  return Promise.resolve()
 }
 
 // ─── 検索エンジン ─────────────────────────────────────────────────────────────
@@ -155,40 +440,10 @@ export function buildSearchUrl(query: string, engine = 'google'): string {
 
 // ─── OpenRouter AI（Qwen3 free） ──────────────────────────────────────────────
 
-
-// ─── Chart API ────────────────────────────────────────────────────────────────
-
-export interface ChartPoint {
-  t: number       // Unix ms
-  close: number
-  high: number | null
-  low: number | null
-  volume: number | null
-}
-
-export interface ChartData {
-  ticker: string
-  range: string
-  interval: string
-  meta: Record<string, unknown>
-  points: ChartPoint[]
-  error?: string
-}
-
-export async function fetchChart(
-  ticker: string,
-  range = '1mo',
-  interval = '1d'
-): Promise<ChartData> {
-  const p = new URLSearchParams({ ticker, range, interval })
-  const res = await fetch('/api/chart?' + p)
-  if (!res.ok) throw new Error('chart API error')
-  return res.json()
-}
-
 export async function summarizeWithAI(text: string): Promise<string> {
-  const key = localStorage.getItem('openrouter_key') || (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
-  if (!key) throw new Error('OpenRouter APIキーが未設定です')
+  const key = localStorage.getItem('openrouter_key') ||
+    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
+  if (!key) throw new Error('no key')
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -200,13 +455,11 @@ export async function summarizeWithAI(text: string): Promise<string> {
     body: JSON.stringify({
       model: 'qwen/qwen3-next-80b-a3b-instruct:free',
       max_tokens: 400,
-      messages: [{
-        role: 'user',
-        content: `以下のニュースタイトルを3〜5行の日本語で要約してください。箇条書きで。\n\n${text}`,
-      }],
+      messages: [{ role: 'user',
+        content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` }],
     }),
   })
-  if (!res.ok) throw new Error('AI API error')
+  if (!res.ok) throw new Error('AI error')
   const data = await res.json()
   return data.choices?.[0]?.message?.content || ''
 }
