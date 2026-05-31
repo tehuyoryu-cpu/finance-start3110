@@ -146,7 +146,7 @@ export default function NewsPanel({ prefs }: Props) {
 
 // ─── リーダーモーダル ─────────────────────────────────────────────────────────
 function ReaderModal({ article, prefs, onClose }: { article: NewsArticle; prefs: Prefs; onClose: () => void }) {
-  const [content, setContent]   = useState<{ content_ja: string | null; content: string | null; top_image: string | null } | null>(null)
+  const [content, setContent]   = useState<{ content_ja: string | null; content: string | null; top_image: string | null; error?: string } | null>(null)
   const [loading, setLoading]   = useState(true)
   const [lang, setLang]         = useState<'ja' | 'orig'>('ja')
   const [theme, setTheme]       = useState(prefs.readerTheme || 'dark')
