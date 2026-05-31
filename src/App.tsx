@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { hasAllKeys } from './services/api'
+import { hasOpenRouterKey } from './components/ApiKeySetup'
 import ApiKeySetup from './components/ApiKeySetup'
 import Dashboard from './components/Dashboard'
 
@@ -7,7 +7,9 @@ export default function App() {
   const [status, setStatus] = useState<'loading' | 'setup' | 'ready'>('loading')
 
   useEffect(() => {
-    hasAllKeys().then((ok) => setStatus(ok ? 'ready' : 'setup'))
+    // OpenRouterキーがあればそのままready、なければsetup画面（スキップ可能）
+    const ok = hasOpenRouterKey()
+    setStatus(ok ? 'ready' : 'setup')
   }, [])
 
   if (status === 'loading') {
