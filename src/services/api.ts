@@ -73,47 +73,40 @@ export interface Prefs {
 // Yahoo Finance: Vite dev serverのプロキシ経由（本番はnodeサーバー経由）
 const YAHOO_BASE = '/proxy/yahoo'
 
-// RSS: rss2json.com 無料API（500リクエスト/日）
-const RSS2JSON = (url: string) =>
-  `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}&count=10`
+// RSS: rss2json.com または生XMLをViteプロキシ経由で取得
 
 // ─── RSS ニュースソース ────────────────────────────────────────────────────────
 
 const NEWS_SOURCES = [
   // カルチャー
-  { id: 'netorabo',    name: 'ねとらぼ',         url: 'https://nlab.itmedia.co.jp/rss/2.0/index.rdf',     lang: 'ja', category: 'culture' },
-  { id: 'kai_you',     name: 'KAI-YOU',           url: 'https://kai-you.net/feed',                          lang: 'ja', category: 'culture' },
-  { id: 'mashable',    name: 'Mashable',           url: 'https://mashable.com/feeds/rss/all',                lang: 'en', category: 'culture' },
+  { id: 'netorabo',    name: 'ねとらぼ',         proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://nlab.itmedia.co.jp/rss/2.0/index.rdf') + '&count=8',     lang: 'ja', category: 'culture' },
+  { id: 'kai_you',     name: 'KAI-YOU',           proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://kai-you.net/feed') + '&count=8',                          lang: 'ja', category: 'culture' },
+  { id: 'mashable',    name: 'Mashable',           proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://mashable.com/feeds/rss/all') + '&count=8',                lang: 'en', category: 'culture' },
   // テック
-  { id: 'techcrunch',  name: 'TechCrunch',         url: 'https://techcrunch.com/feed/',                      lang: 'en', category: 'tech' },
-  { id: 'theverge',    name: 'The Verge',          url: 'https://www.theverge.com/rss/index.xml',            lang: 'en', category: 'tech' },
-  { id: 'gigazine',    name: 'GIGAZINE',           url: 'https://gigazine.net/news/rss_2.0/',                lang: 'ja', category: 'tech' },
-  { id: 'itmedia',     name: 'ITmedia',            url: 'https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml', lang: 'ja', category: 'tech' },
-  { id: 'wired',       name: 'Wired',              url: 'https://www.wired.com/feed/rss',                    lang: 'en', category: 'tech' },
-  { id: 'arstechnica', name: 'Ars Technica',       url: 'https://feeds.arstechnica.com/arstechnica/index',   lang: 'en', category: 'tech' },
-  { id: 'venturebeat', name: 'VentureBeat',        url: 'https://venturebeat.com/feed/',                     lang: 'en', category: 'tech' },
+  { id: 'techcrunch',  name: 'TechCrunch',         proxyUrl: '/proxy/techcrunch/feed/',                      lang: 'en', category: 'tech', isRaw: true },
+  { id: 'theverge',    name: 'The Verge',          proxyUrl: '/proxy/theverge/rss/index.xml',                lang: 'en', category: 'tech', isRaw: true },
+  { id: 'gigazine',    name: 'GIGAZINE',           proxyUrl: '/proxy/gigazine/news/rss_2.0/',                lang: 'ja', category: 'tech', isRaw: true },
+  { id: 'itmedia',     name: 'ITmedia',            proxyUrl: '/proxy/itmedia/rss/2.0/itmedia_all.xml',       lang: 'ja', category: 'tech', isRaw: true },
+  { id: 'wired',       name: 'Wired',              proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.wired.com/feed/rss') + '&count=8',                   lang: 'en', category: 'tech' },
   // ビジネス
-  { id: 'reuters',     name: 'Reuters',            url: 'https://feeds.reuters.com/reuters/topNews',          lang: 'en', category: 'business' },
-  { id: 'cnbc',        name: 'CNBC',               url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', lang: 'en', category: 'business' },
-  { id: 'toyokeizai',  name: '東洋経済',            url: 'https://toyokeizai.net/list/feed/rss',               lang: 'ja', category: 'business' },
-  { id: 'forbesjp',    name: 'Forbes Japan',       url: 'https://forbesjapan.com/feed',                      lang: 'ja', category: 'business' },
+  { id: 'reuters',     name: 'Reuters',            proxyUrl: '/proxy/reuters/reuters/topNews',               lang: 'en', category: 'business', isRaw: true },
+  { id: 'toyokeizai',  name: '東洋経済',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://toyokeizai.net/list/feed/rss') + '&count=8',             lang: 'ja', category: 'business' },
+  { id: 'forbesjp',    name: 'Forbes Japan',       proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://forbesjapan.com/feed') + '&count=8',                    lang: 'ja', category: 'business' },
   // ゲーム
-  { id: 'ign',         name: 'IGN',                url: 'https://www.ign.com/rss/articles',                  lang: 'en', category: 'game' },
-  { id: 'polygon',     name: 'Polygon',            url: 'https://www.polygon.com/rss/index.xml',             lang: 'en', category: 'game' },
-  { id: 'famitsu',     name: 'Famitsu',            url: 'https://www.famitsu.com/rss/famitsu/all.xml',       lang: 'ja', category: 'game' },
+  { id: 'ign',         name: 'IGN',                proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.ign.com/rss/articles') + '&count=8',                lang: 'en', category: 'game' },
+  { id: 'polygon',     name: 'Polygon',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.polygon.com/rss/index.xml') + '&count=8',           lang: 'en', category: 'game' },
+  { id: 'famitsu',     name: 'Famitsu',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.famitsu.com/rss/famitsu/all.xml') + '&count=8',     lang: 'ja', category: 'game' },
   // アニメ
-  { id: 'ann',         name: 'Anime News Network', url: 'https://www.animenewsnetwork.com/all/rss.xml',      lang: 'en', category: 'anime' },
-  { id: 'comicnatalie',name: 'コミックナタリー',    url: 'https://natalie.mu/comic/feed/news',                 lang: 'ja', category: 'anime' },
+  { id: 'ann',         name: 'Anime News Network', proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.animenewsnetwork.com/all/rss.xml') + '&count=8',   lang: 'en', category: 'anime' },
+  { id: 'comicnatalie',name: 'コミックナタリー',    proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://natalie.mu/comic/feed/news') + '&count=8',              lang: 'ja', category: 'anime' },
   // エンタメ
-  { id: 'variety',     name: 'Variety',            url: 'https://variety.com/feed/',                         lang: 'en', category: 'entertainment' },
-  { id: 'deadline',    name: 'Deadline',           url: 'https://deadline.com/feed/',                        lang: 'en', category: 'entertainment' },
+  { id: 'variety',     name: 'Variety',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://variety.com/feed/') + '&count=8',                       lang: 'en', category: 'entertainment' },
   // 音楽
-  { id: 'billboard',   name: 'Billboard',          url: 'https://www.billboard.com/feed/',                   lang: 'en', category: 'music' },
-  { id: 'pitchfork',   name: 'Pitchfork',          url: 'https://pitchfork.com/rss/news/',                   lang: 'en', category: 'music' },
+  { id: 'pitchfork',   name: 'Pitchfork',          proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://pitchfork.com/rss/news/') + '&count=8',                lang: 'en', category: 'music' },
   // 科学
-  { id: 'spacecom',    name: 'Space.com',          url: 'https://www.space.com/feeds/all',                   lang: 'en', category: 'science' },
-  { id: 'nasa',        name: 'NASA',               url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss',    lang: 'en', category: 'science' },
-]
+  { id: 'spacecom',    name: 'Space.com',          proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.space.com/feeds/all') + '&count=8',                lang: 'en', category: 'science' },
+  { id: 'nasa',        name: 'NASA',               proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.nasa.gov/rss/dyn/breaking_news.rss') + '&count=8', lang: 'en', category: 'science' },
+]]
 
 // ─── RSSパーサー（純JS、依存ゼロ） ───────────────────────────────────────────
 
@@ -146,7 +139,7 @@ function _stripTags(s: string): string {
   return s.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()
 }
 
-function _parseRss(xml: string, source: typeof NEWS_SOURCES[0], maxItems = 10): NewsArticle[] {
+function _parseRss(xml: string, source: { id: string; name: string; category: string; lang: string }, maxItems = 10): NewsArticle[] {
   const isAtom = xml.includes('<feed')
   const tag    = isAtom ? 'entry' : 'item'
   const re     = new RegExp(`<${tag}[\\s>]([\\s\\S]*?)<\\/${tag}>`, 'gi')
@@ -191,35 +184,43 @@ async function _fetchSourceNews(source: typeof NEWS_SOURCES[0]): Promise<NewsArt
   if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.articles
 
   try {
-    // rss2json.com 経由でRSS取得（CORSフリー）
-    const res = await fetch(RSS2JSON(source.url), { signal: AbortSignal.timeout(10000) })
+    const res = await fetch(source.proxyUrl, { signal: AbortSignal.timeout(10000) })
     if (!res.ok) return []
-    const data = await res.json()
-    if (data.status !== 'ok') return []
 
-    const articles: NewsArticle[] = (data.items || []).slice(0, 8).map((item: {
-      title?: string; link?: string; pubDate?: string;
-      description?: string; thumbnail?: string; enclosure?: { link?: string }
-    }, i: number) => {
-      const title = _decodeHtml((item.title || '').replace(/<[^>]+>/g, '').trim())
-      const url   = item.link || ''
-      const desc  = _decodeHtml((item.description || '').replace(/<[^>]+>/g, '').trim()).slice(0, 300)
-      const img   = item.thumbnail || item.enclosure?.link || null
-      const pub   = item.pubDate ? Math.floor(new Date(item.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000)
-      return {
-        id:          source.id + ':' + _hashStr(url || String(i)),
-        source_id:   source.id,
-        source_name: source.name,
-        category:    source.category,
-        lang:        source.lang,
-        title,
-        url,
-        description: desc || null,
-        pub_date:    pub,
-        top_image:   img,
-        title_ja:    null,
-      }
-    })
+    let articles: NewsArticle[]
+
+    if (source.isRaw) {
+      // 生XMLをパース
+      const xml = await res.text()
+      articles = _parseRss(xml, source, 8)
+    } else {
+      // rss2json レスポンス
+      const data = await res.json()
+      if (data.status !== 'ok') return []
+      articles = (data.items || []).slice(0, 8).map((item: {
+        title?: string; link?: string; pubDate?: string;
+        description?: string; thumbnail?: string; enclosure?: { link?: string }
+      }, i: number) => {
+        const title = _decodeHtml((item.title || '').replace(/<[^>]+>/g, '').trim())
+        const url   = item.link || ''
+        const desc  = _decodeHtml((item.description || '').replace(/<[^>]+>/g, '').trim()).slice(0, 300)
+        const img   = item.thumbnail || item.enclosure?.link || null
+        const pub   = item.pubDate ? Math.floor(new Date(item.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000)
+        return {
+          id:          source.id + ':' + _hashStr(url || String(i)),
+          source_id:   source.id,
+          source_name: source.name,
+          category:    source.category,
+          lang:        source.lang,
+          title,
+          url,
+          description: desc || null,
+          pub_date:    pub,
+          top_image:   img,
+          title_ja:    null,
+        }
+      })
+    }
 
     _newsCache.set(source.id, { ts: Date.now(), articles })
     return articles
