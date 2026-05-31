@@ -44,6 +44,9 @@ export interface StockData {
   low: number
   open: number
   prevClose: number
+  currency?: string
+  marketState?: string
+  shortName?: string
   error?: string
 }
 
