@@ -6,12 +6,6 @@ export default defineConfig({
   base: './',
   build: { outDir: 'dist', emptyOutDir: true },
   server: {
-    proxy: {
-      // siteruns23432 の ui.port = 7777
-      '/api': {
-        target: 'http://127.0.0.1:7777',
-        changeOrigin: true,
-      },
-    },
+    port: 5173,
   },
 })
