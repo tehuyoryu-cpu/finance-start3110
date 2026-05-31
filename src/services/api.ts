@@ -152,6 +152,37 @@ export function buildSearchUrl(query: string, engine = 'google'): string {
 
 // ─── OpenRouter AI（Qwen3 free） ──────────────────────────────────────────────
 
+
+// ─── Chart API ────────────────────────────────────────────────────────────────
+
+export interface ChartPoint {
+  t: number       // Unix ms
+  close: number
+  high: number | null
+  low: number | null
+  volume: number | null
+}
+
+export interface ChartData {
+  ticker: string
+  range: string
+  interval: string
+  meta: Record<string, unknown>
+  points: ChartPoint[]
+  error?: string
+}
+
+export async function fetchChart(
+  ticker: string,
+  range = '1mo',
+  interval = '1d'
+): Promise<ChartData> {
+  const p = new URLSearchParams({ ticker, range, interval })
+  const res = await fetch('/api/chart?' + p)
+  if (!res.ok) throw new Error('chart API error')
+  return res.json()
+}
+
 export async function summarizeWithAI(text: string): Promise<string> {
   const key = localStorage.getItem('openrouter_key') || import.meta.env.VITE_OPENROUTER_KEY || ''
   if (!key) throw new Error('OpenRouter APIキーが未設定です')
