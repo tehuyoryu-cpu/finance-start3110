@@ -187,7 +187,7 @@ export async function fetchChart(
 }
 
 export async function summarizeWithAI(text: string): Promise<string> {
-  const key = localStorage.getItem('openrouter_key') || import.meta.env.VITE_OPENROUTER_KEY || ''
+  const key = localStorage.getItem('openrouter_key') || (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
   if (!key) throw new Error('OpenRouter APIキーが未設定です')
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
