@@ -7,9 +7,9 @@ export default defineConfig({
   build: { outDir: 'dist', emptyOutDir: true },
   server: {
     proxy: {
-      // siteruns23432 のAPIサーバーにプロキシ（デフォルトポート3131）
+      // siteruns23432 の ui.port = 7777
       '/api': {
-        target: 'http://localhost:3131',
+        target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
     },
