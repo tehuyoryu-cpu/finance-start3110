@@ -6,10 +6,10 @@ import EconomicCalendar from './EconomicCalendar'
 import NewsCluster from './NewsCluster'
 import Watchlist from './Watchlist'
 import { useState } from 'react'
-import ApiKeySetup from './ApiKeySetup'
+import ApiKeySetup, { hasOpenRouterKey } from './ApiKeySetup'
 
 export default function Dashboard() {
-  const [showSetup, setShowSetup] = useState(false)
+  const [showSetup, setShowSetup] = useState(false) // キー未設定でもスキップ可能
 
   if (showSetup) {
     return <ApiKeySetup onComplete={() => setShowSetup(false)} />
