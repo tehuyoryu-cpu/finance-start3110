@@ -153,11 +153,13 @@ export function buildSearchUrl(query: string, engine = 'google'): string {
 // ─── OpenRouter AI（Qwen3 free） ──────────────────────────────────────────────
 
 export async function summarizeWithAI(text: string): Promise<string> {
+  const key = localStorage.getItem('openrouter_key') || import.meta.env.VITE_OPENROUTER_KEY || ''
+  if (!key) throw new Error('OpenRouter APIキーが未設定です')
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY || ''}`,
+      'Authorization': `Bearer ${key}`,
       'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
       'X-Title': 'Finance Start',
     },
