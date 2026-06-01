@@ -69,43 +69,53 @@ export interface Prefs {
   readerFontSize: number
 }
 
-// ─── プロキシ設定 ────────────────────────────────────────────────────────────
-// Yahoo Finance: Vite dev serverのプロキシ経由（本番はnodeサーバー経由）
+// ─── Yahoo Finance プロキシ（Vite dev server経由） ───────────────────────────
 const YAHOO_BASE = '/proxy/yahoo'
-
-// RSS: rss2json.com または生XMLをViteプロキシ経由で取得
 
 // ─── RSS ニュースソース ────────────────────────────────────────────────────────
 
+const _R = (url: string) =>
+  `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}&count=10`
+
 const NEWS_SOURCES = [
   // カルチャー
-  { id: 'netorabo',    name: 'ねとらぼ',         proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://nlab.itmedia.co.jp/rss/2.0/index.rdf') + '&count=8',     lang: 'ja', category: 'culture' },
-  { id: 'kai_you',     name: 'KAI-YOU',           proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://kai-you.net/feed') + '&count=8',                          lang: 'ja', category: 'culture' },
-  { id: 'mashable',    name: 'Mashable',           proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://mashable.com/feeds/rss/all') + '&count=8',                lang: 'en', category: 'culture' },
+  { id: 'netorabo',    name: 'ねとらぼ',         url: _R('https://nlab.itmedia.co.jp/rss/2.0/index.rdf'),              lang: 'ja', category: 'culture' },
+  { id: 'kai_you',     name: 'KAI-YOU',           url: _R('https://kai-you.net/feed'),                                   lang: 'ja', category: 'culture' },
+  { id: 'mashable',    name: 'Mashable',           url: _R('https://mashable.com/feeds/rss/all'),                         lang: 'en', category: 'culture' },
+  { id: 'boredpanda',  name: 'Bored Panda',        url: _R('https://www.boredpanda.com/feed/'),                           lang: 'en', category: 'culture' },
   // テック
-  { id: 'techcrunch',  name: 'TechCrunch',         proxyUrl: '/proxy/techcrunch/feed/',                      lang: 'en', category: 'tech', isRaw: true },
-  { id: 'theverge',    name: 'The Verge',          proxyUrl: '/proxy/theverge/rss/index.xml',                lang: 'en', category: 'tech', isRaw: true },
-  { id: 'gigazine',    name: 'GIGAZINE',           proxyUrl: '/proxy/gigazine/news/rss_2.0/',                lang: 'ja', category: 'tech', isRaw: true },
-  { id: 'itmedia',     name: 'ITmedia',            proxyUrl: '/proxy/itmedia/rss/2.0/itmedia_all.xml',       lang: 'ja', category: 'tech', isRaw: true },
-  { id: 'wired',       name: 'Wired',              proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.wired.com/feed/rss') + '&count=8',                   lang: 'en', category: 'tech' },
+  { id: 'techcrunch',  name: 'TechCrunch',         url: _R('https://techcrunch.com/feed/'),                               lang: 'en', category: 'tech' },
+  { id: 'theverge',    name: 'The Verge',          url: _R('https://www.theverge.com/rss/index.xml'),                     lang: 'en', category: 'tech' },
+  { id: 'gigazine',    name: 'GIGAZINE',           url: _R('https://gigazine.net/news/rss_2.0/'),                         lang: 'ja', category: 'tech' },
+  { id: 'itmedia',     name: 'ITmedia',            url: _R('https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml'),          lang: 'ja', category: 'tech' },
+  { id: 'wired',       name: 'Wired',              url: _R('https://www.wired.com/feed/rss'),                             lang: 'en', category: 'tech' },
+  { id: 'arstechnica', name: 'Ars Technica',       url: _R('https://feeds.arstechnica.com/arstechnica/index'),            lang: 'en', category: 'tech' },
+  { id: 'engadget',    name: 'Engadget',           url: _R('https://www.engadget.com/rss.xml'),                           lang: 'en', category: 'tech' },
   // ビジネス
-  { id: 'reuters',     name: 'Reuters',            proxyUrl: '/proxy/reuters/reuters/topNews',               lang: 'en', category: 'business', isRaw: true },
-  { id: 'toyokeizai',  name: '東洋経済',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://toyokeizai.net/list/feed/rss') + '&count=8',             lang: 'ja', category: 'business' },
-  { id: 'forbesjp',    name: 'Forbes Japan',       proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://forbesjapan.com/feed') + '&count=8',                    lang: 'ja', category: 'business' },
+  { id: 'reuters',     name: 'Reuters',            url: _R('https://feeds.reuters.com/reuters/topNews'),                  lang: 'en', category: 'business' },
+  { id: 'cnbc',        name: 'CNBC',               url: _R('https://www.cnbc.com/id/100003114/device/rss/rss.html'),      lang: 'en', category: 'business' },
+  { id: 'toyokeizai',  name: '東洋経済',            url: _R('https://toyokeizai.net/list/feed/rss'),                       lang: 'ja', category: 'business' },
+  { id: 'forbesjp',    name: 'Forbes Japan',       url: _R('https://forbesjapan.com/feed'),                               lang: 'ja', category: 'business' },
+  { id: 'bijp',        name: 'Business Insider JP',url: _R('https://www.businessinsider.jp/feed/index.xml'),               lang: 'ja', category: 'business' },
   // ゲーム
-  { id: 'ign',         name: 'IGN',                proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.ign.com/rss/articles') + '&count=8',                lang: 'en', category: 'game' },
-  { id: 'polygon',     name: 'Polygon',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.polygon.com/rss/index.xml') + '&count=8',           lang: 'en', category: 'game' },
-  { id: 'famitsu',     name: 'Famitsu',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.famitsu.com/rss/famitsu/all.xml') + '&count=8',     lang: 'ja', category: 'game' },
+  { id: 'ign',         name: 'IGN',                url: _R('https://www.ign.com/rss/articles'),                           lang: 'en', category: 'game' },
+  { id: 'polygon',     name: 'Polygon',            url: _R('https://www.polygon.com/rss/index.xml'),                      lang: 'en', category: 'game' },
+  { id: 'kotaku',      name: 'Kotaku',             url: _R('https://kotaku.com/rss'),                                     lang: 'en', category: 'game' },
+  { id: 'famitsu',     name: 'Famitsu',            url: _R('https://www.famitsu.com/rss/famitsu/all.xml'),                lang: 'ja', category: 'game' },
   // アニメ
-  { id: 'ann',         name: 'Anime News Network', proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.animenewsnetwork.com/all/rss.xml') + '&count=8',   lang: 'en', category: 'anime' },
-  { id: 'comicnatalie',name: 'コミックナタリー',    proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://natalie.mu/comic/feed/news') + '&count=8',              lang: 'ja', category: 'anime' },
+  { id: 'ann',         name: 'Anime News Network', url: _R('https://www.animenewsnetwork.com/all/rss.xml'),               lang: 'en', category: 'anime' },
+  { id: 'comicnatalie',name: 'コミックナタリー',    url: _R('https://natalie.mu/comic/feed/news'),                          lang: 'ja', category: 'anime' },
   // エンタメ
-  { id: 'variety',     name: 'Variety',            proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://variety.com/feed/') + '&count=8',                       lang: 'en', category: 'entertainment' },
+  { id: 'variety',     name: 'Variety',            url: _R('https://variety.com/feed/'),                                  lang: 'en', category: 'entertainment' },
+  { id: 'deadline',    name: 'Deadline',           url: _R('https://deadline.com/feed/'),                                 lang: 'en', category: 'entertainment' },
   // 音楽
-  { id: 'pitchfork',   name: 'Pitchfork',          proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://pitchfork.com/rss/news/') + '&count=8',                lang: 'en', category: 'music' },
+  { id: 'billboard',   name: 'Billboard',          url: _R('https://www.billboard.com/feed/'),                            lang: 'en', category: 'music' },
+  { id: 'pitchfork',   name: 'Pitchfork',          url: _R('https://pitchfork.com/rss/news/'),                            lang: 'en', category: 'music' },
+  { id: 'nme',         name: 'NME',                url: _R('https://www.nme.com/feed'),                                   lang: 'en', category: 'music' },
   // 科学
-  { id: 'spacecom',    name: 'Space.com',          proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.space.com/feeds/all') + '&count=8',                lang: 'en', category: 'science' },
-  { id: 'nasa',        name: 'NASA',               proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.nasa.gov/rss/dyn/breaking_news.rss') + '&count=8', lang: 'en', category: 'science' },
+  { id: 'spacecom',    name: 'Space.com',          url: _R('https://www.space.com/feeds/all'),                            lang: 'en', category: 'science' },
+  { id: 'nasa',        name: 'NASA',               url: _R('https://www.nasa.gov/rss/dyn/breaking_news.rss'),             lang: 'en', category: 'science' },
+]
 ]
 
 // ─── RSSパーサー（純JS、依存ゼロ） ───────────────────────────────────────────
@@ -184,43 +194,36 @@ async function _fetchSourceNews(source: typeof NEWS_SOURCES[0]): Promise<NewsArt
   if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.articles
 
   try {
-    const res = await fetch(source.proxyUrl, { signal: AbortSignal.timeout(10000) })
+    const res = await fetch(source.url, { signal: AbortSignal.timeout(12000) })
     if (!res.ok) return []
+    const data = await res.json()
+    if (data.status !== 'ok') return []
 
-    let articles: NewsArticle[]
-
-    if (source.isRaw) {
-      // 生XMLをパース
-      const xml = await res.text()
-      articles = _parseRss(xml, source, 8)
-    } else {
-      // rss2json レスポンス
-      const data = await res.json()
-      if (data.status !== 'ok') return []
-      articles = (data.items || []).slice(0, 8).map((item: {
-        title?: string; link?: string; pubDate?: string;
-        description?: string; thumbnail?: string; enclosure?: { link?: string }
-      }, i: number) => {
-        const title = _decodeHtml((item.title || '').replace(/<[^>]+>/g, '').trim())
-        const url   = item.link || ''
-        const desc  = _decodeHtml((item.description || '').replace(/<[^>]+>/g, '').trim()).slice(0, 300)
-        const img   = item.thumbnail || item.enclosure?.link || null
-        const pub   = item.pubDate ? Math.floor(new Date(item.pubDate).getTime() / 1000) : Math.floor(Date.now() / 1000)
-        return {
-          id:          source.id + ':' + _hashStr(url || String(i)),
-          source_id:   source.id,
-          source_name: source.name,
-          category:    source.category,
-          lang:        source.lang,
-          title,
-          url,
-          description: desc || null,
-          pub_date:    pub,
-          top_image:   img,
-          title_ja:    null,
-        }
-      })
-    }
+    const articles: NewsArticle[] = (data.items || []).slice(0, 10).map((item: {
+      title?: string; link?: string; pubDate?: string
+      description?: string; thumbnail?: string; enclosure?: { link?: string }
+    }, i: number) => {
+      const title = _decodeHtml((item.title || '').replace(/<[^>]+>/g, '').trim())
+      const url   = item.link || ''
+      const desc  = _decodeHtml((item.description || '').replace(/<[^>]+>/g, '').trim()).slice(0, 300)
+      const img   = item.thumbnail || item.enclosure?.link || null
+      const pub   = item.pubDate
+        ? Math.floor(new Date(item.pubDate).getTime() / 1000)
+        : Math.floor(Date.now() / 1000)
+      return {
+        id:          source.id + ':' + _hashStr(url || String(i)),
+        source_id:   source.id,
+        source_name: source.name,
+        category:    source.category,
+        lang:        source.lang,
+        title,
+        url,
+        description: desc || null,
+        pub_date:    pub,
+        top_image:   img,
+        title_ja:    null,
+      }
+    })
 
     _newsCache.set(source.id, { ts: Date.now(), articles })
     return articles
