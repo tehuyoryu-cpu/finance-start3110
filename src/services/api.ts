@@ -106,7 +106,7 @@ const NEWS_SOURCES = [
   // 科学
   { id: 'spacecom',    name: 'Space.com',          proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.space.com/feeds/all') + '&count=8',                lang: 'en', category: 'science' },
   { id: 'nasa',        name: 'NASA',               proxyUrl: '/proxy/rss2json/v1/api.json?rss_url=' + encodeURIComponent('https://www.nasa.gov/rss/dyn/breaking_news.rss') + '&count=8', lang: 'en', category: 'science' },
-]]
+]
 
 // ─── RSSパーサー（純JS、依存ゼロ） ───────────────────────────────────────────
 
