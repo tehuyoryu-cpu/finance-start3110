@@ -56,7 +56,6 @@ export default function NewsPanel({ prefs }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* フィルター */}
       <div className="flex flex-wrap gap-2 items-center">
         <select value={category} onChange={e => { setCategory(e.target.value); load(1) }}
           className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:border-blue-500 outline-none transition-colors">
@@ -80,15 +79,13 @@ export default function NewsPanel({ prefs }: Props) {
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-950 border border-red-800 rounded-lg px-3 py-2">
-          {error}
-        </div>
+        <div className="text-xs text-red-400 bg-red-950 border border-red-800 rounded-lg px-3 py-2">{error}</div>
       )}
 
       {loading ? (
-        <div className="space-y-3 stagger">
+        <div className="space-y-3">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="animate-fade-up rounded-xl p-4 border border-zinc-800">
+            <div key={i} className="rounded-xl p-4 border border-zinc-800">
               <div className="animate-shimmer h-3 w-1/4 rounded mb-2" />
               <div className="animate-shimmer h-4 w-3/4 rounded mb-1" />
               <div className="animate-shimmer h-3 w-full rounded" />
@@ -105,7 +102,7 @@ export default function NewsPanel({ prefs }: Props) {
           </button>
         </div>
       ) : (
-        <div className="space-y-2 stagger">
+        <div className="space-y-2">
           {articles.map(a => (
             <ArticleCard key={a.id} article={a} onOpen={() => setReader(a)} />
           ))}
@@ -115,10 +112,10 @@ export default function NewsPanel({ prefs }: Props) {
       {pages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">
           <button onClick={() => load(Math.max(1, page - 1))} disabled={page <= 1}
-            className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-xs transition-all hover:scale-105 active:scale-95">◀</button>
+            className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-xs transition-all">◀</button>
           <span className="text-xs text-zinc-400">{page} / {pages}（{total}件）</span>
           <button onClick={() => load(Math.min(pages, page + 1))} disabled={page >= pages}
-            className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-xs transition-all hover:scale-105 active:scale-95">▶</button>
+            className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-xs transition-all">▶</button>
         </div>
       )}
 
@@ -129,20 +126,20 @@ export default function NewsPanel({ prefs }: Props) {
   )
 }
 
-// ─── 記事カード（翻訳付き） ───────────────────────────────────────────────────
+// ─── 記事カード ───────────────────────────────────────────────────────────────
 function ArticleCard({ article: a, onOpen }: { article: NewsArticle; onOpen: () => void }) {
   const [titleJa, setTitleJa] = useState<string | null>(null)
-  const hasKey = !!localStorage.getItem('openrouter_key')
 
   useEffect(() => {
-    if (a.lang === 'en' && hasKey) {
-      translateTitle(a.title).then(setTitleJa)
+    const key = localStorage.getItem('openrouter_key')
+    if (a.lang === 'en' && key) {
+      translateTitle(a.title).then(t => setTitleJa(t !== a.title ? t : null))
     }
-  }, [a.id, a.lang, a.title, hasKey])
+  }, [a.id, a.lang, a.title])
 
   return (
     <article onClick={onOpen}
-      className="animate-fade-up bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600
+      className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600
                  rounded-xl p-4 cursor-pointer transition-all duration-200
                  hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30">
       <div className="flex items-center gap-2 mb-1.5">
@@ -156,48 +153,44 @@ function ArticleCard({ article: a, onOpen }: { article: NewsArticle; onOpen: () 
           }) : ''}
         </span>
       </div>
-      {/* 日本語タイトル（翻訳済みなら表示） */}
-      <p className="font-semibold text-sm text-zinc-100 leading-snug">
-        {titleJa || a.title}
-      </p>
-      {titleJa && (
-        <p className="text-xs text-zinc-500 mt-0.5">{a.title}</p>
-      )}
+      <p className="font-semibold text-sm text-zinc-100 leading-snug">{titleJa || a.title}</p>
+      {titleJa && <p className="text-xs text-zinc-500 mt-0.5">{a.title}</p>}
       {a.description && (
-        <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-          {a.description}
-        </p>
+        <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">{a.description}</p>
       )}
     </article>
   )
 }
 
-// ─── リーダーモーダル（AI全文生成） ──────────────────────────────────────────
+// ─── リーダーモーダル ─────────────────────────────────────────────────────────
 function ReaderModal({ article, prefs, onClose }: {
   article: NewsArticle; prefs: Prefs; onClose: () => void
 }) {
-  const [titleJa, setTitleJa]   = useState('')
-  const [body, setBody]         = useState('')
+  const [titleJa, setTitleJa]         = useState(article.title)
+  const [body, setBody]               = useState('')
   const [bodyLoading, setBodyLoading] = useState(true)
-  const [theme, setTheme]       = useState(prefs.readerTheme || 'dark')
-  const [fontSize, setFontSize] = useState(prefs.readerFontSize || 15)
-  const hasKey = !!localStorage.getItem('openrouter_key')
+  const [theme, setTheme]             = useState(prefs.readerTheme || 'dark')
+  const [fontSize, setFontSize]       = useState(Number(prefs.readerFontSize) || 15)
 
+  // Escキー
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
+  // 翻訳 + AI全文生成
   useEffect(() => {
+    const key = localStorage.getItem('openrouter_key')
+
     // タイトル翻訳
-    if (article.lang === 'en' && hasKey) {
-      translateTitle(article.title).then(setTitleJa)
-    } else {
-      setTitleJa(article.title)
+    if (article.lang === 'en' && key) {
+      translateTitle(article.title).then(t => { if (t !== article.title) setTitleJa(t) })
     }
-    // AI全文生成
+
+    // AI全文生成（キーなしでもdescriptionを返す）
     setBodyLoading(true)
+    setBody('')
     generateArticleBody({
       title:       article.title,
       description: article.description,
@@ -206,21 +199,29 @@ function ReaderModal({ article, prefs, onClose }: {
     }).then(text => {
       setBody(text)
       setBodyLoading(false)
+    }).catch(() => {
+      setBody(article.description || '本文を取得できませんでした')
+      setBodyLoading(false)
     })
-  }, [article.id, article.lang, article.title, article.description, article.url, article.source_name, hasKey])
+  }, [article.id]) // eslint-disable-line
 
   const themeClass = theme === 'light' ? 'bg-white text-zinc-900'
                    : theme === 'sepia' ? 'bg-amber-50 text-amber-900'
                    : 'bg-zinc-900 text-zinc-100'
+  const borderClass = theme === 'dark' ? 'border-zinc-700' : 'border-zinc-300'
+  const hasKey = !!localStorage.getItem('openrouter_key')
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+    // オーバーレイ：クリックで閉じる
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto"
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`animate-pop-in w-full max-w-2xl max-h-[88vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl ${themeClass}`}>
+      {/* パネル：高さ固定しない、スクロールは内側 */}
+      <div className={`relative w-full max-w-2xl my-8 rounded-2xl flex flex-col shadow-2xl ${themeClass}`}
+           style={{ minHeight: '60vh' }}>
 
-        {/* ヘッダー */}
-        <div className="flex items-center gap-2 p-3 bg-zinc-950 text-white flex-shrink-0">
-          <span className="flex-1 text-xs font-bold truncate">{titleJa || article.title}</span>
+        {/* ヘッダー（固定） */}
+        <div className="sticky top-0 z-10 flex items-center gap-2 p-3 bg-zinc-950 text-white rounded-t-2xl flex-shrink-0">
+          <span className="flex-1 text-xs font-bold truncate">{titleJa}</span>
           <div className="flex gap-1 flex-shrink-0">
             {(['dark','light','sepia'] as const).map(t => (
               <button key={t} onClick={() => setTheme(t)}
@@ -238,7 +239,7 @@ function ReaderModal({ article, prefs, onClose }: {
         </div>
 
         {/* ソースバー */}
-        <div className="flex gap-3 items-center px-4 py-2 bg-zinc-800 text-xs text-zinc-400 flex-shrink-0 flex-wrap">
+        <div className="flex flex-wrap gap-3 items-center px-4 py-2 bg-zinc-800 text-xs text-zinc-400 flex-shrink-0">
           <span className="font-semibold text-zinc-300">{article.source_name}</span>
           {article.pub_date && (
             <span>{new Date(article.pub_date * 1000).toLocaleDateString('ja-JP', {
@@ -246,57 +247,61 @@ function ReaderModal({ article, prefs, onClose }: {
             })}</span>
           )}
           {!hasKey && (
-            <span className="text-yellow-500">⚠ OpenRouterキーを設定するとAI全文生成・翻訳が使えます</span>
+            <span className="text-yellow-400">⚠ APIキー設定でAI解説が使えます</span>
           )}
           <a href={article.url} target="_blank" rel="noopener noreferrer"
-            className="ml-auto text-blue-400 hover:text-blue-300 transition-colors font-semibold">
+            className="ml-auto text-blue-400 hover:text-blue-300 font-semibold transition-colors">
             元記事 ↗
           </a>
           <button onClick={() => window.open(buildSearchUrl(article.title, prefs.searchEngineNews), '_blank')}
             className="hover:text-blue-400 transition-colors">🔍</button>
         </div>
 
-        {/* 本文 */}
-        <div className="flex-1 overflow-y-auto p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.85 }}>
-          <div className="animate-fade-up">
-            {article.top_image && (
-              <img src={article.top_image} alt=""
-                className="w-full rounded-xl mb-5 max-h-56 object-cover"
-                onError={e => (e.currentTarget.style.display = 'none')} />
-            )}
+        {/* 本文（スクロールしない、全て展開） */}
+        <div className="p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.9 }}>
 
-            <h2 className="text-xl font-bold mb-1 leading-snug">{titleJa || article.title}</h2>
-            {titleJa && titleJa !== article.title && (
-              <p className="text-xs text-zinc-500 mb-4">{article.title}</p>
-            )}
+          {/* サムネイル */}
+          {article.top_image && (
+            <img src={article.top_image} alt=""
+              className="w-full rounded-xl mb-5 max-h-64 object-cover"
+              onError={e => (e.currentTarget.style.display = 'none')} />
+          )}
 
-            {bodyLoading ? (
-              <div className="space-y-3 animate-pulse mt-4">
-                <div className="text-xs text-blue-400 flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                  {hasKey ? 'Qwen3 AIが全文を生成中...' : 'descriptionを取得中...'}
-                </div>
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-3 bg-zinc-700 rounded"
-                    style={{ width: `${65 + Math.random() * 35}%` }} />
-                ))}
+          {/* タイトル */}
+          <h2 className="text-xl font-bold mb-1 leading-snug">{titleJa}</h2>
+          {titleJa !== article.title && (
+            <p className="text-xs text-zinc-500 mb-5">{article.title}</p>
+          )}
+
+          {/* 本文 */}
+          {bodyLoading ? (
+            <div className="space-y-3 mt-4">
+              <div className="flex items-center gap-2 text-xs text-blue-400">
+                <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin inline-block" />
+                {hasKey ? 'Qwen3 AI が解説を生成中...' : '概要を取得中...'}
               </div>
-            ) : (
-              <div>
-                {hasKey && (
-                  <div className="text-xs text-blue-400 mb-3 flex items-center gap-1">
-                    ✨ Qwen3 AI による日本語解説
-                  </div>
-                )}
-                <p className="leading-relaxed whitespace-pre-wrap">{body}</p>
-                <div className="mt-6 pt-4 border-t border-zinc-700">
-                  <a href={article.url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
-                    元記事を読む（{article.source_name}）↗
-                  </a>
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="h-3 bg-zinc-700 rounded animate-pulse"
+                  style={{ width: `${60 + (i * 13) % 40}%` }} />
+              ))}
+            </div>
+          ) : (
+            <div>
+              {hasKey && (
+                <div className="text-xs text-blue-400 mb-4 flex items-center gap-1">
+                  ✨ Qwen3 AI による日本語解説
                 </div>
-              </div>
-            )}
+              )}
+              <p className="whitespace-pre-wrap leading-relaxed">{body}</p>
+            </div>
+          )}
+
+          {/* 元記事リンク */}
+          <div className={`mt-8 pt-5 border-t ${borderClass}`}>
+            <a href={article.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
+              元記事を読む（{article.source_name}）↗
+            </a>
           </div>
         </div>
       </div>
