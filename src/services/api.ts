@@ -69,8 +69,31 @@ export interface Prefs {
   readerFontSize: number
 }
 
-// ─── Yahoo Finance（v8 APIはCORS対応しているので直接fetch可） ──────────────
-const YAHOO_BASE = 'https://query1.finance.yahoo.com'
+// ─── Yahoo Finance（query1 → query2 フォールバック） ─────────────────────────
+const YAHOO_HOSTS = [
+  'https://query1.finance.yahoo.com',
+  'https://query2.finance.yahoo.com',
+]
+
+async function _yahooFetch(path: string): Promise<Response> {
+  let lastErr: Error = new Error('unknown')
+  for (const host of YAHOO_HOSTS) {
+    try {
+      const res = await fetch(host + path, {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/json',
+        },
+      })
+      if (res.ok) return res
+      lastErr = new Error('HTTP ' + res.status)
+    } catch (e) {
+      lastErr = e as Error
+    }
+  }
+  throw lastErr
+}
 
 // ─── RSS ニュースソース ────────────────────────────────────────────────────────
 
@@ -348,9 +371,9 @@ export async function fetchQuote(ticker: string): Promise<StockData> {
   const cached = _quoteCache.get(ticker)
   if (cached && Date.now() - cached.ts < QUOTE_TTL) return cached.data
 
-  const url = `${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
+  const path = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    const res = await _yahooFetch(path)
     if (!res.ok) throw new Error('HTTP ' + res.status)
     const json = await res.json()
     const meta = json?.chart?.result?.[0]?.meta
@@ -393,9 +416,9 @@ export async function fetchChart(ticker: string, range = '1mo', interval = '1d')
   const cached = _chartCache.get(key)
   if (cached && Date.now() - cached.ts < ttl) return cached.data
 
-  const url = `${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`
+  const path = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    const res = await _yahooFetch(path)
     if (!res.ok) throw new Error('HTTP ' + res.status)
     const json = await res.json()
     const result     = json?.chart?.result?.[0]
