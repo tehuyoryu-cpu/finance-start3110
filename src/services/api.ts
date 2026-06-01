@@ -69,8 +69,8 @@ export interface Prefs {
   readerFontSize: number
 }
 
-// ─── Yahoo Finance プロキシ（Vite dev server経由） ───────────────────────────
-const YAHOO_BASE = '/proxy/yahoo'
+// ─── Yahoo Finance（v8 APIはCORS対応しているので直接fetch可） ──────────────
+const YAHOO_BASE = 'https://query1.finance.yahoo.com'
 
 // ─── RSS ニュースソース ────────────────────────────────────────────────────────
 
@@ -496,4 +496,89 @@ export async function summarizeWithAI(text: string): Promise<string> {
   if (!res.ok) throw new Error('AI error')
   const data = await res.json()
   return data.choices?.[0]?.message?.content || ''
+}
+
+// ─── タイトル翻訳（Qwen3 free） ────────────────────────────────────────────
+
+const _translateCache = new Map<string, string>()
+
+export async function translateTitle(title: string): Promise<string> {
+  if (_translateCache.has(title)) return _translateCache.get(title)!
+  const key = localStorage.getItem('openrouter_key') ||
+    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
+  if (!key) return title
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+        'X-Title': 'Finance Start',
+      },
+      body: JSON.stringify({
+        model: 'qwen/qwen3-next-80b-a3b-instruct:free',
+        max_tokens: 120,
+        temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: `以下の英語ニュースタイトルを自然な日本語に翻訳してください。翻訳文のみ出力し、説明不要。
+
+${title}`,
+        }],
+      }),
+    })
+    if (!res.ok) return title
+    const data = await res.json()
+    const translated = data.choices?.[0]?.message?.content?.trim() || title
+    _translateCache.set(title, translated)
+    return translated
+  } catch {
+    return title
+  }
+}
+
+// ─── 記事全文生成（AIで本文を再構成） ──────────────────────────────────────
+
+export async function generateArticleBody(article: {
+  title: string
+  description: string | null
+  url: string
+  source_name: string
+}): Promise<string> {
+  const key = localStorage.getItem('openrouter_key') ||
+    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
+  if (!key) return article.description || '（AIキー未設定のため全文生成できません）'
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+        'X-Title': 'Finance Start',
+      },
+      body: JSON.stringify({
+        model: 'qwen/qwen3-next-80b-a3b-instruct:free',
+        max_tokens: 800,
+        temperature: 0.5,
+        messages: [{
+          role: 'user',
+          content: `以下のニュース記事を日本語で詳しく解説してください。
+タイトル: ${article.title}
+概要: ${article.description || 'なし'}
+出典: ${article.source_name}
+
+400〜600字程度で、背景・内容・意義をわかりやすく解説してください。
+本文のみ出力し、見出しや前置きは不要です。`,
+        }],
+      }),
+    })
+    if (!res.ok) return article.description || ''
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content?.trim() || article.description || ''
+  } catch {
+    return article.description || ''
+  }
 }
