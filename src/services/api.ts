@@ -561,6 +561,8 @@ ${title}`,
 
 // ─── 記事全文生成（AIで本文を再構成） ──────────────────────────────────────
 
+const _bodyCache = new Map<string, string>()
+
 export async function generateArticleBody(article: {
   title: string
   description: string | null
