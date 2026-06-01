@@ -116,7 +116,6 @@ const NEWS_SOURCES = [
   { id: 'spacecom',    name: 'Space.com',          url: _R('https://www.space.com/feeds/all'),                            lang: 'en', category: 'science' },
   { id: 'nasa',        name: 'NASA',               url: _R('https://www.nasa.gov/rss/dyn/breaking_news.rss'),             lang: 'en', category: 'science' },
 ]
-]
 
 // ─── RSSパーサー（純JS、依存ゼロ） ───────────────────────────────────────────
 
