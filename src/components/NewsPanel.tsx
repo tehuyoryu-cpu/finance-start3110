@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { fetchNews, buildSearchUrl, type NewsArticle, type Prefs } from '../services/api'
+import {
+  fetchNews, buildSearchUrl, translateTitle, generateArticleBody,
+  type NewsArticle, type Prefs
+} from '../services/api'
 
 const CATEGORIES = [
   { value: '',               label: '全て' },
@@ -12,8 +15,7 @@ const CATEGORIES = [
   { value: 'music',         label: '🎵 音楽' },
   { value: 'science',       label: '🔬 科学' },
 ]
-
-const BADGE_COLORS: Record<string, string> = {
+const BADGE: Record<string, string> = {
   culture: 'bg-purple-600', tech: 'bg-green-700', business: 'bg-blue-700',
   game: 'bg-orange-600', anime: 'bg-amber-600', entertainment: 'bg-pink-700',
   music: 'bg-yellow-700', science: 'bg-teal-700',
@@ -35,19 +37,13 @@ export default function NewsPanel({ prefs }: Props) {
   const searchTimer             = useRef<ReturnType<typeof setTimeout>>()
 
   const load = useCallback(async (p = 1) => {
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     try {
       const data = await fetchNews({ category, lang, q, page: p, limit: 20 })
       setArticles(data.articles)
-      setTotal(data.total)
-      setPages(data.pages)
-      setPage(p)
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
-    }
+      setTotal(data.total); setPages(data.pages); setPage(p)
+    } catch (e) { setError(String(e)) }
+    finally { setLoading(false) }
   }, [category, lang, q])
 
   useEffect(() => { load(1) }, [load])
@@ -83,14 +79,12 @@ export default function NewsPanel({ prefs }: Props) {
         )}
       </div>
 
-      {/* エラー表示 */}
       {error && (
         <div className="text-xs text-red-400 bg-red-950 border border-red-800 rounded-lg px-3 py-2">
-          取得エラー: {error}
+          {error}
         </div>
       )}
 
-      {/* 記事一覧 */}
       {loading ? (
         <div className="space-y-3 stagger">
           {[...Array(6)].map((_, i) => (
@@ -104,43 +98,20 @@ export default function NewsPanel({ prefs }: Props) {
       ) : articles.length === 0 ? (
         <div className="text-center text-zinc-500 text-sm py-12">
           <div className="text-3xl mb-2">📭</div>
-          <div>記事が見つかりません</div>
-          <div className="text-xs mt-1 text-zinc-600">フィルターを変えるか、しばらく待ってから再試行してください</div>
-          <button onClick={() => load(1)} className="mt-3 text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors">
+          <p>記事が見つかりません</p>
+          <button onClick={() => load(1)}
+            className="mt-3 text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors">
             再読み込み
           </button>
         </div>
       ) : (
         <div className="space-y-2 stagger">
           {articles.map(a => (
-            <article key={a.id}
-              onClick={() => setReader(a)}
-              className="animate-fade-up bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600
-                         rounded-xl p-4 cursor-pointer transition-all duration-200
-                         hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${BADGE_COLORS[a.category] || 'bg-zinc-600'}`}>
-                  {CATEGORIES.find(c => c.value === a.category)?.label || a.category}
-                </span>
-                <span className="text-xs text-zinc-500">{a.source_name}</span>
-                <span className="text-xs text-zinc-600 ml-auto">
-                  {a.pub_date ? new Date(a.pub_date * 1000).toLocaleDateString('ja-JP', {
-                    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                  }) : ''}
-                </span>
-              </div>
-              <p className="font-semibold text-sm text-zinc-100 leading-snug">{a.title}</p>
-              {a.description && (
-                <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                  {a.description}
-                </p>
-              )}
-            </article>
+            <ArticleCard key={a.id} article={a} onOpen={() => setReader(a)} />
           ))}
         </div>
       )}
 
-      {/* ページネーション */}
       {pages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">
           <button onClick={() => load(Math.max(1, page - 1))} disabled={page <= 1}
@@ -151,7 +122,6 @@ export default function NewsPanel({ prefs }: Props) {
         </div>
       )}
 
-      {/* リーダーモーダル */}
       {reader && (
         <ReaderModal article={reader} prefs={prefs} onClose={() => setReader(null)} />
       )}
@@ -159,33 +129,98 @@ export default function NewsPanel({ prefs }: Props) {
   )
 }
 
-// ─── リーダーモーダル（descriptionベース、本文はCORS制限で取得不可） ─────────
+// ─── 記事カード（翻訳付き） ───────────────────────────────────────────────────
+function ArticleCard({ article: a, onOpen }: { article: NewsArticle; onOpen: () => void }) {
+  const [titleJa, setTitleJa] = useState<string | null>(null)
+  const hasKey = !!localStorage.getItem('openrouter_key')
+
+  useEffect(() => {
+    if (a.lang === 'en' && hasKey) {
+      translateTitle(a.title).then(setTitleJa)
+    }
+  }, [a.id, a.lang, a.title, hasKey])
+
+  return (
+    <article onClick={onOpen}
+      className="animate-fade-up bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600
+                 rounded-xl p-4 cursor-pointer transition-all duration-200
+                 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${BADGE[a.category] || 'bg-zinc-600'}`}>
+          {CATEGORIES.find(c => c.value === a.category)?.label || a.category}
+        </span>
+        <span className="text-xs text-zinc-500">{a.source_name}</span>
+        <span className="text-xs text-zinc-600 ml-auto">
+          {a.pub_date ? new Date(a.pub_date * 1000).toLocaleDateString('ja-JP', {
+            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          }) : ''}
+        </span>
+      </div>
+      {/* 日本語タイトル（翻訳済みなら表示） */}
+      <p className="font-semibold text-sm text-zinc-100 leading-snug">
+        {titleJa || a.title}
+      </p>
+      {titleJa && (
+        <p className="text-xs text-zinc-500 mt-0.5">{a.title}</p>
+      )}
+      {a.description && (
+        <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+          {a.description}
+        </p>
+      )}
+    </article>
+  )
+}
+
+// ─── リーダーモーダル（AI全文生成） ──────────────────────────────────────────
 function ReaderModal({ article, prefs, onClose }: {
   article: NewsArticle; prefs: Prefs; onClose: () => void
 }) {
+  const [titleJa, setTitleJa]   = useState('')
+  const [body, setBody]         = useState('')
+  const [bodyLoading, setBodyLoading] = useState(true)
   const [theme, setTheme]       = useState(prefs.readerTheme || 'dark')
   const [fontSize, setFontSize] = useState(prefs.readerFontSize || 15)
+  const hasKey = !!localStorage.getItem('openrouter_key')
 
-  const themeClass = theme === 'light' ? 'bg-white text-zinc-900'
-                   : theme === 'sepia' ? 'bg-amber-50 text-amber-900'
-                   : 'bg-zinc-900 text-zinc-100'
-
-  // Escキーで閉じる
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  useEffect(() => {
+    // タイトル翻訳
+    if (article.lang === 'en' && hasKey) {
+      translateTitle(article.title).then(setTitleJa)
+    } else {
+      setTitleJa(article.title)
+    }
+    // AI全文生成
+    setBodyLoading(true)
+    generateArticleBody({
+      title:       article.title,
+      description: article.description,
+      url:         article.url,
+      source_name: article.source_name,
+    }).then(text => {
+      setBody(text)
+      setBodyLoading(false)
+    })
+  }, [article.id, article.lang, article.title, article.description, article.url, article.source_name, hasKey])
+
+  const themeClass = theme === 'light' ? 'bg-white text-zinc-900'
+                   : theme === 'sepia' ? 'bg-amber-50 text-amber-900'
+                   : 'bg-zinc-900 text-zinc-100'
+
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+         onClick={e => e.target === e.currentTarget && onClose()}>
       <div className={`animate-pop-in w-full max-w-2xl max-h-[88vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl ${themeClass}`}>
+
         {/* ヘッダー */}
         <div className="flex items-center gap-2 p-3 bg-zinc-950 text-white flex-shrink-0">
-          <span className="flex-1 text-xs font-bold truncate">{article.title}</span>
+          <span className="flex-1 text-xs font-bold truncate">{titleJa || article.title}</span>
           <div className="flex gap-1 flex-shrink-0">
             {(['dark','light','sepia'] as const).map(t => (
               <button key={t} onClick={() => setTheme(t)}
@@ -193,9 +228,12 @@ function ReaderModal({ article, prefs, onClose }: {
                 {t === 'dark' ? '🌙' : t === 'light' ? '☀️' : '📜'}
               </button>
             ))}
-            <button onClick={() => setFontSize(f => Math.max(12, f - 1))} className="text-xs bg-zinc-700 hover:bg-zinc-600 px-1.5 rounded transition-colors">A-</button>
-            <button onClick={() => setFontSize(f => Math.min(24, f + 1))} className="text-xs bg-zinc-700 hover:bg-zinc-600 px-1.5 rounded transition-colors">A+</button>
-            <button onClick={onClose} className="text-xs bg-zinc-700 hover:bg-red-600 px-2 rounded transition-colors">✕</button>
+            <button onClick={() => setFontSize(f => Math.max(12, f - 1))}
+              className="text-xs bg-zinc-700 hover:bg-zinc-600 px-1.5 rounded transition-colors">A-</button>
+            <button onClick={() => setFontSize(f => Math.min(24, f + 1))}
+              className="text-xs bg-zinc-700 hover:bg-zinc-600 px-1.5 rounded transition-colors">A+</button>
+            <button onClick={onClose}
+              className="text-xs bg-zinc-700 hover:bg-red-600 px-2 rounded transition-colors">✕</button>
           </div>
         </div>
 
@@ -203,46 +241,62 @@ function ReaderModal({ article, prefs, onClose }: {
         <div className="flex gap-3 items-center px-4 py-2 bg-zinc-800 text-xs text-zinc-400 flex-shrink-0 flex-wrap">
           <span className="font-semibold text-zinc-300">{article.source_name}</span>
           {article.pub_date && (
-            <span>{new Date(article.pub_date * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            <span>{new Date(article.pub_date * 1000).toLocaleDateString('ja-JP', {
+              year: 'numeric', month: 'long', day: 'numeric'
+            })}</span>
+          )}
+          {!hasKey && (
+            <span className="text-yellow-500">⚠ OpenRouterキーを設定するとAI全文生成・翻訳が使えます</span>
           )}
           <a href={article.url} target="_blank" rel="noopener noreferrer"
             className="ml-auto text-blue-400 hover:text-blue-300 transition-colors font-semibold">
-            全文を読む ↗
+            元記事 ↗
           </a>
-          <button
-            onClick={() => window.open(buildSearchUrl(article.title, prefs.searchEngineNews), '_blank')}
-            className="hover:text-blue-400 transition-colors">
-            🔍 検索
-          </button>
+          <button onClick={() => window.open(buildSearchUrl(article.title, prefs.searchEngineNews), '_blank')}
+            className="hover:text-blue-400 transition-colors">🔍</button>
         </div>
 
-        {/* 本文エリア */}
+        {/* 本文 */}
         <div className="flex-1 overflow-y-auto p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.85 }}>
           <div className="animate-fade-up">
-            {/* サムネイル */}
             {article.top_image && (
-              <img
-                src={article.top_image} alt=""
+              <img src={article.top_image} alt=""
                 className="w-full rounded-xl mb-5 max-h-56 object-cover"
-                onError={e => (e.currentTarget.style.display = 'none')}
-              />
+                onError={e => (e.currentTarget.style.display = 'none')} />
             )}
 
-            {/* タイトル */}
-            <h2 className="text-xl font-bold mb-4 leading-snug">{article.title}</h2>
+            <h2 className="text-xl font-bold mb-1 leading-snug">{titleJa || article.title}</h2>
+            {titleJa && titleJa !== article.title && (
+              <p className="text-xs text-zinc-500 mb-4">{article.title}</p>
+            )}
 
-            {/* description（RSSから取得済み） */}
-            {article.description ? (
-              <p className="leading-relaxed text-zinc-300 mb-6">{article.description}</p>
+            {bodyLoading ? (
+              <div className="space-y-3 animate-pulse mt-4">
+                <div className="text-xs text-blue-400 flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  {hasKey ? 'Qwen3 AIが全文を生成中...' : 'descriptionを取得中...'}
+                </div>
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-3 bg-zinc-700 rounded"
+                    style={{ width: `${65 + Math.random() * 35}%` }} />
+                ))}
+              </div>
             ) : (
-              <p className="text-zinc-500 italic mb-4">概要は取得できませんでした。</p>
+              <div>
+                {hasKey && (
+                  <div className="text-xs text-blue-400 mb-3 flex items-center gap-1">
+                    ✨ Qwen3 AI による日本語解説
+                  </div>
+                )}
+                <p className="leading-relaxed whitespace-pre-wrap">{body}</p>
+                <div className="mt-6 pt-4 border-t border-zinc-700">
+                  <a href={article.url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
+                    元記事を読む（{article.source_name}）↗
+                  </a>
+                </div>
+              </div>
             )}
-
-            {/* 全文リンク */}
-            <a href={article.url} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
-              全文を読む（{article.source_name}）↗
-            </a>
           </div>
         </div>
       </div>
