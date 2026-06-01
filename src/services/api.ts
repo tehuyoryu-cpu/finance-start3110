@@ -71,7 +71,7 @@ export interface Prefs {
 
 // ─── Yahoo Finance（query1 → query2 フォールバック） ─────────────────────────
 const YAHOO_HOSTS = [
-  'https://query1.finance.yahoo.com',
+  '/proxy/yahoo',
   'https://query2.finance.yahoo.com',
 ]
 
@@ -571,7 +571,7 @@ async function _deeplWebSingle(text: string): Promise<string> {
     bodyStr = bodyStr.replace('"method":"', '"method" : "')
   }
 
-  const res = await fetch('https://www2.deepl.com/jsonrpc', {
+  const res = await fetch('/proxy/deepl/jsonrpc', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -596,7 +596,7 @@ async function _deeplWebSingle(text: string): Promise<string> {
 
 // ── Google 翻訳（APIなし） ────────────────────────────────────────────────────
 async function _googleTranslate(text: string): Promise<string> {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q=${encodeURIComponent(text)}`
+  const url = `/proxy/gtrans/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q=${encodeURIComponent(text)}`
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0' },
     signal: AbortSignal.timeout(8000),
