@@ -603,7 +603,9 @@ export async function generateArticleBody(article: {
     })
     if (!res.ok) return article.description || ''
     const data = await res.json()
-    const result = data.choices?.[0]?.message?.content?.trim() || article.description || ''
+    let result = data.choices?.[0]?.message?.content?.trim() || article.description || ''
+    // Qwen3のthinkingタグを除去
+    result = result.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
     _bodyCache.set(article.url, result)
     return result
   } catch {
