@@ -80,11 +80,9 @@ async function _yahooFetch(path: string): Promise<Response> {
   for (const host of YAHOO_HOSTS) {
     try {
       const res = await fetch(host + path, {
-        signal: AbortSignal.timeout(8000),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          'Accept': 'application/json',
-        },
+        signal: AbortSignal.timeout(10000),
+        headers: { 'Accept': 'application/json' },
+        mode: 'cors',
       })
       if (res.ok) return res
       lastErr = new Error('HTTP ' + res.status)
@@ -569,6 +567,9 @@ export async function generateArticleBody(article: {
   url: string
   source_name: string
 }): Promise<string> {
+  // キャッシュがあれば即返す
+  if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
+
   const key = localStorage.getItem('openrouter_key') ||
     (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
   if (!key) return article.description || '（AIキー未設定のため全文生成できません）'
@@ -600,7 +601,9 @@ export async function generateArticleBody(article: {
     })
     if (!res.ok) return article.description || ''
     const data = await res.json()
-    return data.choices?.[0]?.message?.content?.trim() || article.description || ''
+    const result = data.choices?.[0]?.message?.content?.trim() || article.description || ''
+    _bodyCache.set(article.url, result)
+    return result
   } catch {
     return article.description || ''
   }
