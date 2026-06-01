@@ -519,44 +519,208 @@ export async function summarizeWithAI(text: string): Promise<string> {
   return data.choices?.[0]?.message?.content || ''
 }
 
-// ─── タイトル翻訳（Qwen3 free） ────────────────────────────────────────────
+// ─── 翻訳（DeepL Web → Google翻訳 → AIフォールバック） ────────────────────────
 
 const _translateCache = new Map<string, string>()
 
-export async function translateTitle(title: string): Promise<string> {
-  if (_translateCache.has(title)) return _translateCache.get(title)!
-  const key = localStorage.getItem('openrouter_key') ||
-    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
-  if (!key) return title
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`,
-        'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-        'X-Title': 'Finance Start',
-      },
-      body: JSON.stringify({
-        model: 'qwen/qwen3-next-80b-a3b-instruct:free',
-        max_tokens: 120,
-        temperature: 0.3,
-        messages: [{
-          role: 'user',
-          content: `以下の英語ニュースタイトルを自然な日本語に翻訳してください。翻訳文のみ出力し、説明不要。
+// ── DeepL Web 内部 JSON-RPC API（キー不要） ──────────────────────────────────
+async function _deeplWeb(text: string): Promise<string> {
+  if (!text || text.length < 2) return text
 
-${title}`,
-        }],
-      }),
-    })
-    if (!res.ok) return title
-    const data = await res.json()
-    const translated = data.choices?.[0]?.message?.content?.trim() || title
-    _translateCache.set(title, translated)
-    return translated
-  } catch {
-    return title
+  // 1000文字超は分割
+  if (text.length > 1000) {
+    const parts = _splitText(text, 900)
+    const results: string[] = []
+    for (const part of parts) {
+      results.push(await _deeplWebSingle(part))
+      await _sleep(300)
+    }
+    return results.join('')
   }
+  return _deeplWebSingle(text)
+}
+
+async function _deeplWebSingle(text: string): Promise<string> {
+  const id = Math.floor(Math.random() * 10000) * 2 + 1
+  const body = {
+    jsonrpc: '2.0',
+    method: 'LMT_handle_jobs',
+    id,
+    params: {
+      jobs: [{
+        kind: 'default',
+        sentences: [{ text, id: 1, prefix: '' }],
+        raw_en_context_before: [],
+        raw_en_context_after: [],
+        preferred_num_beams: 4,
+      }],
+      lang: {
+        source_lang_computed: 'EN',
+        target_lang: 'JA',
+      },
+      priority: 1,
+      commonJobParams: { wasSpoken: false, transcribe_as: '' },
+      timestamp: Date.now(),
+    },
+  }
+
+  // DeepLの"i"カウントトリック
+  let bodyStr = JSON.stringify(body)
+  const iCount = (bodyStr.match(/"i"/g) || []).length
+  if ((iCount + 3) % 2 !== 0) {
+    bodyStr = bodyStr.replace('"method":"', '"method" : "')
+  }
+
+  const res = await fetch('https://www2.deepl.com/jsonrpc', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': '*/*',
+      'Accept-Language': 'ja,en;q=0.9',
+      'Origin': 'https://www.deepl.com',
+      'Referer': 'https://www.deepl.com/translator',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    body: bodyStr,
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) throw new Error('DeepL HTTP ' + res.status)
+  const data = await res.json()
+  if (data.error) throw new Error('DeepL error: ' + JSON.stringify(data.error))
+  const translations = data?.result?.translations
+  if (!translations?.length) throw new Error('DeepL empty result')
+  return translations.map((t: { beams?: { sentences?: { text: string }[] }[] }) =>
+    (t.beams?.[0]?.sentences || []).map((s: { text: string }) => s.text).join('')
+  ).join('')
+}
+
+// ── Google 翻訳（APIなし） ────────────────────────────────────────────────────
+async function _googleTranslate(text: string): Promise<string> {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q=${encodeURIComponent(text)}`
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) throw new Error('Google translate HTTP ' + res.status)
+  const data = await res.json()
+  if (!data?.[0]) throw new Error('Google translate empty')
+  return (data[0] as [string, string][]).map(seg => seg[0] || '').join('')
+}
+
+function _splitText(text: string, maxLen: number): string[] {
+  const parts: string[] = []
+  let start = 0
+  while (start < text.length) {
+    let end = start + maxLen
+    if (end < text.length) {
+      const breakAt = text.lastIndexOf('. ', end)
+      if (breakAt > start) end = breakAt + 2
+    }
+    parts.push(text.slice(start, end))
+    start = end
+  }
+  return parts
+}
+
+function _sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
+
+// ── メイン翻訳関数（DeepL → Google → AI → 原文） ────────────────────────────
+async function _translateText(text: string): Promise<string> {
+  if (!text) return text
+  if (_translateCache.has(text)) return _translateCache.get(text)!
+
+  // 1. DeepL Web（キー不要）
+  try {
+    const result = await _deeplWeb(text)
+    if (result && result !== text) {
+      _translateCache.set(text, result)
+      return result
+    }
+  } catch (e) {
+    console.warn('[translate] DeepL failed:', e)
+  }
+
+  // 2. Google 翻訳（フォールバック）
+  try {
+    const result = await _googleTranslate(text)
+    if (result && result !== text) {
+      _translateCache.set(text, result)
+      return result
+    }
+  } catch (e) {
+    console.warn('[translate] Google failed:', e)
+  }
+
+  // 3. OpenRouter AI（キーあり時のみ）
+  const key = localStorage.getItem('openrouter_key') || ''
+  if (key) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+        },
+        body: JSON.stringify({
+          model: 'qwen/qwen3-30b-a3b:free',
+          max_tokens: 200,
+          messages: [
+            { role: 'system', content: '英語を自然な日本語に翻訳します。翻訳文のみ出力。' },
+            { role: 'user', content: text },
+          ],
+        }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        let result = data.choices?.[0]?.message?.content?.trim() || ''
+        result = result.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+        if (result && result !== text) {
+          _translateCache.set(text, result)
+          return result
+        }
+      }
+    } catch (e) {
+      console.warn('[translate] AI failed:', e)
+    }
+  }
+
+  return text // 全て失敗したら原文
+}
+
+// ── バッチ翻訳（複数タイトルを効率よく処理） ─────────────────────────────────
+let _translateQueue: Array<{ text: string; resolve: (t: string) => void }> = []
+let _translateTimer: ReturnType<typeof setTimeout> | null = null
+
+function _scheduleTranslateBatch() {
+  if (_translateTimer) return
+  _translateTimer = setTimeout(async () => {
+    _translateTimer = null
+    const batch = _translateQueue.splice(0, 20)
+    if (!batch.length) return
+
+    // DeepL は並列リクエストに弱いので順番に処理
+    for (const item of batch) {
+      try {
+        const result = await _translateText(item.text)
+        item.resolve(result)
+      } catch {
+        item.resolve(item.text)
+      }
+      await _sleep(200)
+    }
+
+    if (_translateQueue.length > 0) _scheduleTranslateBatch()
+  }, 100)
+}
+
+export function translateTitle(title: string): Promise<string> {
+  if (_translateCache.has(title)) return Promise.resolve(_translateCache.get(title)!)
+  return new Promise(resolve => {
+    _translateQueue.push({ text: title, resolve })
+    _scheduleTranslateBatch()
+  })
 }
 
 // ─── 記事全文生成（AIで本文を再構成） ──────────────────────────────────────
