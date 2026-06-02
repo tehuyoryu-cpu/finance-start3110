@@ -657,7 +657,6 @@ export function translateTitle(title: string): Promise<string> {
 }
 
 // ─── 記事全文生成（AIで本文を再構成） ──────────────────────────────────────
-
 const _bodyCache = new Map<string, string>()
 
 export async function generateArticleBody(article: {
@@ -669,9 +668,9 @@ export async function generateArticleBody(article: {
   if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
 
   const key = localStorage.getItem('openrouter_key') || ''
-  const isEn = /^[A-Za-z\s\d]/.test(article.title)
+  const isEn = /^[\x00-\x7F]/.test(article.title)
 
-  // AIキーありの場合：AIで全文生成
+  // AIキーあり → Qwen3で全文生成
   if (key) {
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -704,7 +703,7 @@ export async function generateArticleBody(article: {
     } catch (e) { console.warn('[article] AI failed:', e) }
   }
 
-  // AIキーなし or AI失敗：descriptionを翻訳して表示
+  // AIキーなし → descriptionを翻訳して表示
   const desc = article.description || ''
   if (!desc) {
     const fallback = `${article.source_name} の記事です。元記事リンクから全文をご覧ください。`
@@ -712,72 +711,58 @@ export async function generateArticleBody(article: {
     return fallback
   }
 
-  // 英語記事なら翻訳
   if (isEn) {
     try {
-      const titleJa = await _translateOnce(article.title)
-      const descJa  = await _translateOnce(desc)
-      const result  = `【翻訳】\n${descJa}\n\n---\n【原文タイトル】${article.title}`
+      const descJa = await _translateOnce(desc)
+      const result = descJa !== desc ? descJa : desc
       _bodyCache.set(article.url, result)
       return result
-    } catch {
-      // 翻訳失敗ならそのまま
-    }
+    } catch { /* fall through */ }
   }
 
   _bodyCache.set(article.url, desc)
   return desc
 }
 
+// ─── 検索エンジン ─────────────────────────────────────────────────────────────
 
-const _bodyCache = new Map<string, string>()
+export const SEARCH_ENGINES: Record<string, (q: string) => string> = {
+  google:     q => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
+  bing:       q => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+  duckduckgo: q => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+  brave:      q => `https://search.brave.com/search?q=${encodeURIComponent(q)}`,
+  yahoo_jp:   q => `https://search.yahoo.co.jp/search?p=${encodeURIComponent(q)}`,
+  startpage:  q => `https://www.startpage.com/search?q=${encodeURIComponent(q)}`,
+  ecosia:     q => `https://www.ecosia.org/search?q=${encodeURIComponent(q)}`,
+}
 
-export async function generateArticleBody(article: {
-  title: string
-  description: string | null
-  url: string
-  source_name: string
-}): Promise<string> {
-  // キャッシュがあれば即返す
-  if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
+export function buildSearchUrl(query: string, engine = 'google'): string {
+  return (SEARCH_ENGINES[engine] || SEARCH_ENGINES.google)(query)
+}
 
+// ─── OpenRouter AI 要約 ───────────────────────────────────────────────────────
+
+export async function summarizeWithAI(text: string): Promise<string> {
   const key = localStorage.getItem('openrouter_key') ||
     (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
-  if (!key) return article.description || '（AIキー未設定のため全文生成できません）'
-
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`,
-        'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-        'X-Title': 'Finance Start',
-      },
-      body: JSON.stringify({
-        model: 'qwen/qwen3-next-80b-a3b-instruct:free',
-        max_tokens: 800,
-        temperature: 0.5,
-        messages: [{
-          role: 'user',
-          content: `以下のニュース記事を日本語で詳しく解説してください。
-タイトル: ${article.title}
-概要: ${article.description || 'なし'}
-出典: ${article.source_name}
-
-400〜600字程度で、背景・内容・意義をわかりやすく解説してください。
-本文のみ出力し、見出しや前置きは不要です。`,
-        }],
-      }),
-    })
-    if (!res.ok) return article.description || ''
-    const data = await res.json()
-    let result = data.choices?.[0]?.message?.content?.trim() || article.description || ''
-    // Qwen3のthinkingタグを除去
-    result = result.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
-    _bodyCache.set(article.url, result)
-    return result
-  } catch {
-    return article.description || ''
-  }
+  if (!key) throw new Error('no key')
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+    },
+    body: JSON.stringify({
+      model: 'qwen/qwen3-30b-a3b:free',
+      max_tokens: 400,
+      messages: [
+        { role: 'system', content: 'ニュース要約AIです。思考過程は出力しません。' },
+        { role: 'user', content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` },
+      ],
+    }),
+  })
+  if (!res.ok) throw new Error('AI error')
+  const data = await res.json()
+  return (data.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim()
 }
