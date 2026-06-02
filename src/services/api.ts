@@ -408,17 +408,17 @@ async function _translateOnce(text: string): Promise<string> {
   if (!text) return text
   if (_translateCache.has(text)) return _translateCache.get(text)!
 
-  // 1. Google翻訳
-  try {
-    const r = await _googleTranslate(text)
-    if (r && r !== text) { _translateCache.set(text, r); return r }
-  } catch (e) { console.warn('[trans] Google:', e) }
-
-  // 2. DeepL Web
+  // 1. DeepL Web（高品質）
   try {
     const r = await _deeplWeb(text)
     if (r && r !== text) { _translateCache.set(text, r); return r }
   } catch (e) { console.warn('[trans] DeepL:', e) }
+
+  // 2. Google翻訳（フォールバック）
+  try {
+    const r = await _googleTranslate(text)
+    if (r && r !== text) { _translateCache.set(text, r); return r }
+  } catch (e) { console.warn('[trans] Google:', e) }
 
   // 3. OpenRouter AI（キーある時のみ）
   const key = _getOpenRouterKey()
@@ -499,7 +499,21 @@ export async function generateArticleBody(article: {
           messages: [
             { role: 'system', content: 'ニュース解説AIです。思考過程は出力せず解説本文のみ出力します。' },
             { role: 'user', content:
-              `以下のニュース記事を日本語で詳しく解説してください。\n\nタイトル: ${article.title}\n概要: ${article.description || 'なし'}\n出典: ${article.source_name}\n\n400〜600字程度、背景・内容・意義をわかりやすく。本文のみ出力。` },
+              `以下のニュース記事を日本語で解説・批評してください。
+
+タイトル: ${article.title}
+概要: ${article.description || 'なし'}
+出典: ${article.source_name}
+
+以下の構成で出力してください（各セクションは改行で区切る）：
+
+【解説】
+記事の背景・内容・意義を150〜200字で説明。
+
+【批評・反論】
+この記事への反対意見、出典の少なさ・偏り・誇張の可能性、別の視点からの異論を150〜200字で鋭く指摘。事実として断定せず「〜という見方もある」「〜が懸念される」など批評的スタンスで。
+
+本文のみ出力。見出し記号（【】）はそのまま使用。` },
           ],
         }),
         signal: AbortSignal.timeout(30000),
