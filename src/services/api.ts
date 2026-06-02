@@ -477,48 +477,6 @@ export function savePrefs(prefs: Partial<Prefs>): Promise<void> {
   return Promise.resolve()
 }
 
-// ─── 検索エンジン ─────────────────────────────────────────────────────────────
-
-export const SEARCH_ENGINES: Record<string, (q: string) => string> = {
-  google:     q => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
-  bing:       q => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
-  duckduckgo: q => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
-  brave:      q => `https://search.brave.com/search?q=${encodeURIComponent(q)}`,
-  yahoo_jp:   q => `https://search.yahoo.co.jp/search?p=${encodeURIComponent(q)}`,
-  startpage:  q => `https://www.startpage.com/search?q=${encodeURIComponent(q)}`,
-  ecosia:     q => `https://www.ecosia.org/search?q=${encodeURIComponent(q)}`,
-}
-
-export function buildSearchUrl(query: string, engine = 'google'): string {
-  return (SEARCH_ENGINES[engine] || SEARCH_ENGINES.google)(query)
-}
-
-// ─── OpenRouter AI（Qwen3 free） ──────────────────────────────────────────────
-
-export async function summarizeWithAI(text: string): Promise<string> {
-  const key = localStorage.getItem('openrouter_key') ||
-    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
-  if (!key) throw new Error('no key')
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
-      'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-      'X-Title': 'Finance Start',
-    },
-    body: JSON.stringify({
-      model: 'qwen/qwen3-next-80b-a3b-instruct:free',
-      max_tokens: 400,
-      messages: [{ role: 'user',
-        content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` }],
-    }),
-  })
-  if (!res.ok) throw new Error('AI error')
-  const data = await res.json()
-  return data.choices?.[0]?.message?.content || ''
-}
-
 // ─── 翻訳（Google翻訳直接 → DeepL Web → AI） ──────────────────────────────────
 // Google translate_a は CORS ヘッダーを返すのでブラウザから直接呼べる
 
