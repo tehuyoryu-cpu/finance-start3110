@@ -289,10 +289,10 @@ function ReaderModal({ article, prefs, onClose }: {
             <div>
               {hasKey && (
                 <div className="text-xs text-blue-400 mb-4 flex items-center gap-1">
-                  ✨ Qwen3 AI による日本語解説
+                  ✨ Qwen3 AI による解説・批評
                 </div>
               )}
-              <p className="whitespace-pre-wrap leading-relaxed">{body}</p>
+              <ArticleBody text={body} />
             </div>
           )}
 
@@ -307,4 +307,50 @@ function ReaderModal({ article, prefs, onClose }: {
       </div>
     </div>
   )
+}
+
+// ─── 記事本文レンダラー（【解説】【批評】対応） ──────────────────────────────
+function ArticleBody({ text }: { text: string }) {
+  // 【セクション名】で分割
+  const sections = text.split(/(【[^】]+】)/).filter(Boolean)
+
+  if (sections.length <= 1) {
+    // セクション分けなし（翻訳のみ or AIキーなし）
+    return <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
+  }
+
+  const rendered: React.ReactNode[] = []
+  let i = 0
+  while (i < sections.length) {
+    const part = sections[i]
+    if (part.startsWith('【') && part.endsWith('】')) {
+      const label = part.slice(1, -1)
+      const content = sections[i + 1]?.trim() || ''
+      const isCritique = label.includes('批評') || label.includes('反論') || label.includes('批判')
+      rendered.push(
+        <div key={i} className={`mb-5 rounded-xl p-4 border ${
+          isCritique
+            ? 'bg-red-950/40 border-red-800/50'
+            : 'bg-zinc-800/50 border-zinc-700/50'
+        }`}>
+          <div className={`text-xs font-bold mb-2 flex items-center gap-1 ${
+            isCritique ? 'text-red-400' : 'text-blue-400'
+          }`}>
+            {isCritique ? '⚠️' : '📋'} {label}
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        </div>
+      )
+      i += 2
+    } else {
+      if (part.trim()) {
+        rendered.push(
+          <p key={i} className="whitespace-pre-wrap leading-relaxed mb-4">{part.trim()}</p>
+        )
+      }
+      i++
+    }
+  }
+
+  return <div>{rendered}</div>
 }
