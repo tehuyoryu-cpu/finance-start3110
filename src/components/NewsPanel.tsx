@@ -131,8 +131,8 @@ function ArticleCard({ article: a, onOpen }: { article: NewsArticle; onOpen: () 
   const [titleJa, setTitleJa] = useState<string | null>(null)
 
   useEffect(() => {
-    const key = localStorage.getItem('openrouter_key')
-    if (a.lang === 'en' && key) {
+    // 英語記事は常に翻訳（Google翻訳/DeepL、キー不要）
+    if (a.lang === 'en') {
       translateTitle(a.title).then(t => setTitleJa(t !== a.title ? t : null))
     }
   }, [a.id, a.lang, a.title])
@@ -183,8 +183,8 @@ function ReaderModal({ article, prefs, onClose }: {
   useEffect(() => {
     const key = localStorage.getItem('openrouter_key')
 
-    // タイトル翻訳
-    if (article.lang === 'en' && key) {
+    // タイトル翻訳（キー不要、Google/DeepL使用）
+    if (article.lang === 'en') {
       translateTitle(article.title).then(t => { if (t !== article.title) setTitleJa(t) })
     }
 
