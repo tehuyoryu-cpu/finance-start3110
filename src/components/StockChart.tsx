@@ -29,16 +29,23 @@ export default function StockChart({ ticker, onClose }: Props) {
   useEffect(() => {
     setLoading(true)
     setError('')
-    Promise.all([
+    Promise.allSettled([
       fetchChart(ticker, range.range, range.interval),
       fetchQuote(ticker),
-    ]).then(([chart, q]) => {
-      if (chart.error) { setError(chart.error); setLoading(false); return }
-      setPoints(chart.points)
-      setQuote(q)
+    ]).then(([chartResult, quoteResult]) => {
+      if (chartResult.status === 'fulfilled') {
+        const chart = chartResult.value
+        if (chart.error) { setError(chart.error); setLoading(false); return }
+        setPoints(chart.points)
+      } else {
+        setError(chartResult.reason?.message || 'チャート取得失敗')
+        setLoading(false)
+        return
+      }
+      if (quoteResult.status === 'fulfilled') setQuote(quoteResult.value)
       setLoading(false)
     }).catch(e => {
-      setError(e.message)
+      setError(e instanceof Error ? e.message : String(e))
       setLoading(false)
     })
   }, [ticker, range])
