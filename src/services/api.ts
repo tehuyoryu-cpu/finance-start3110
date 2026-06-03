@@ -539,6 +539,40 @@ export async function generateArticleBody(article: {
           signal: AbortSignal.timeout(25000),
         })
         if (!res.ok) {
+          if (res.status === 429) {
+            // レート制限 → 3秒待って同モデルを1回リトライ
+            await _sleep(3000)
+            try {
+              const retry = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${key}`,
+                  'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+                  'X-Title': 'Finance Start',
+                },
+                body: JSON.stringify({
+                  model,
+                  max_tokens: 2000,
+                  temperature: 0.5,
+                  messages: [
+                    { role: 'system', content: 'あなたは優秀なジャーナリストです。思考過程は出力せず、指示された形式のみ出力します。' },
+                    { role: 'user', content: PROMPT },
+                  ],
+                }),
+                signal: AbortSignal.timeout(25000),
+              })
+              if (retry.ok) {
+                const data = await retry.json()
+                const result = (data.choices?.[0]?.message?.content || '')
+                  .replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+                if (result.length > 50) {
+                  _bodyCache.set(article.url, result)
+                  return result
+                }
+              }
+            } catch { /* リトライ失敗 → 次のモデルへ */ }
+          }
           console.warn(`[article] ${model} HTTP ${res.status}`)
           continue
         }
