@@ -222,10 +222,11 @@ function ReaderModal({ article, prefs, onClose }: {
   const hasKey = !!localStorage.getItem('openrouter_key')
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 bg-black/70 overflow-y-auto"
          onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="flex items-start justify-center min-h-full p-4 py-8">
       <div className={`relative w-full max-w-2xl rounded-2xl flex flex-col shadow-2xl ${themeClass}`}
-           style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+           onClick={e => e.stopPropagation()}>
 
         {/* ヘッダー */}
         <div className="sticky top-0 z-10 flex items-center gap-2 p-3 bg-zinc-950 text-white rounded-t-2xl flex-shrink-0">
@@ -304,6 +305,7 @@ function ReaderModal({ article, prefs, onClose }: {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
