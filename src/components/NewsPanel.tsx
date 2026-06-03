@@ -225,7 +225,7 @@ function ReaderModal({ article, prefs, onClose }: {
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div className={`relative w-full max-w-2xl rounded-2xl flex flex-col shadow-2xl ${themeClass}`}
-           style={{ maxHeight: '90vh' }}>
+           style={{ maxHeight: '90vh', overflowY: 'auto' }}>
 
         {/* ヘッダー */}
         <div className="sticky top-0 z-10 flex items-center gap-2 p-3 bg-zinc-950 text-white rounded-t-2xl flex-shrink-0">
@@ -266,7 +266,7 @@ function ReaderModal({ article, prefs, onClose }: {
         </div>
 
         {/* 本文 */}
-        <div className="overflow-y-auto p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.9 }}>
+        <div className="p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.9 }}>
           {article.top_image && (
             <img src={article.top_image} alt=""
               className="w-full rounded-xl mb-5 max-h-64 object-cover"
