@@ -421,7 +421,8 @@ async function _translateOnce(text: string): Promise<string> {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                    'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
         body: JSON.stringify({
-          model: 'qwen/qwen3-235b-a22b:free', max_tokens: 200, temperature: 0.1,
+          model: 'qwen/qwen3.6-plus-preview:free',
+          max_tokens: 200, temperature: 0.1,
           messages: [
             { role: 'system', content: '英語を自然な日本語に翻訳。翻訳文のみ出力。' },
             { role: 'user', content: text },
@@ -482,52 +483,70 @@ export async function generateArticleBody(article: {
   title: string; description: string | null; url: string; source_name: string
 }): Promise<string> {
   // キャッシュ確認（失敗結果はキャッシュしない）
-  if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
+  const cached = _bodyCache.get(article.url)
+  if (cached && cached.length > 20) return cached
 
   const key = _getOpenRouterKey()
 
   // AIキーあり → Qwen3で解説＋批評生成
   if (key) {
     try {
-          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-          'X-Title': 'Finance Start',
-        },
-        body: JSON.stringify({
-          model: 'qwen/qwen3-235b-a22b:free',
-          max_tokens: 1200,
-          temperature: 0.5,
-          messages: [
-            {
-              role: 'system',
-              content: 'あなたはニュース解説・批評AIです。<think>タグを含む思考過程は一切出力せず、指示された形式の本文のみ出力します。',
+          // 複数モデルをフォールバック（廃止対策）
+      const MODELS = [
+        'qwen/qwen3.6-plus-preview:free',
+        'qwen/qwen3-235b-a22b:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'mistralai/mistral-7b-instruct:free',
+      ]
+      let res: Response | null = null
+      for (const model of MODELS) {
+        try {
+          const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${key}`,
+              'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+              'X-Title': 'Finance Start',
             },
-            {
-              role: 'user',
-              content: `以下のニュース記事を日本語で解説・批評してください。
+            body: JSON.stringify({
+              model,
+              max_tokens: 1200,
+              temperature: 0.5,
+              messages: [
+                {
+                  role: 'system',
+                  content: 'あなたはニュース解説・批評AIです。思考過程は出力せず、指示された形式のみ出力します。',
+                },
+                {
+                  role: 'user',
+                  content: `以下のニュース記事を日本語で解説・批評してください。
 
 タイトル: ${article.title}
 概要: ${article.description || 'なし'}
 出典: ${article.source_name}
 
-必ず以下の形式で出力してください：
+必ず以下の形式で出力：
 
 【解説】
 記事の背景・内容・意義を150〜200字で説明。
 
 【批評・反論】
-この記事への反対意見、出典の少なさ・偏り・誇張の可能性、別視点からの異論を150〜200字で鋭く指摘。「〜という見方もある」「〜が懸念される」など批評的スタンスで記述。
+反対意見、出典の少なさ・偏り・誇張の可能性、別視点からの異論を150〜200字で鋭く指摘。批評的スタンスで記述。
 
-上記2セクションのみ出力すること。`,
-            },
-          ],
-        }),
-        signal: AbortSignal.timeout(25000),
-      })
+上記2セクションのみ出力。`,
+                },
+              ],
+            }),
+            signal: AbortSignal.timeout(25000),
+          })
+          if (r.ok) { res = r; break }
+          const errText = await r.text()
+          console.warn(`[article] model ${model} failed:`, r.status, errText.slice(0, 100))
+        } catch (e) {
+          console.warn(`[article] model ${model} error:`, e)
+        }
+      }
           if (res.ok) {
         const data = await res.json()
         let result = (data.choices?.[0]?.message?.content || '')
@@ -602,7 +621,7 @@ export async function summarizeWithAI(text: string): Promise<string> {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
     body: JSON.stringify({
-      model: 'qwen/qwen3-235b-a22b:free', max_tokens: 400,
+      model: 'qwen/qwen3.6-plus-preview:free', max_tokens: 400,
       messages: [
         { role: 'system', content: 'ニュース要約AIです。思考過程は出力しません。' },
         { role: 'user', content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` },
