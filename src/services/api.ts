@@ -222,21 +222,28 @@ export async function fetchNews(params: {
 // 開発時: /proxy/yahoo → query1.finance.yahoo.com (Viteプロキシ)
 // 本番時: query2に直接（CORSが通る場合）
 async function _yahooFetch(path: string): Promise<Response> {
-  // まずViteプロキシ経由を試みる
-  try {
-    const res = await fetch('/proxy/yahoo' + path, {
-      signal: AbortSignal.timeout(10000),
-      headers: { 'Accept': 'application/json' },
-    })
-    if (res.ok) return res
-  } catch { /* fallthrough */ }
-
-  // フォールバック: query2 直接
-  const res = await fetch('https://query2.finance.yahoo.com' + path, {
-    signal: AbortSignal.timeout(10000),
-    headers: { 'Accept': 'application/json' },
-  })
-  return res
+  const endpoints = [
+    '/proxy/yahoo' + path,
+    'https://query2.finance.yahoo.com' + path,
+    'https://query1.finance.yahoo.com' + path,
+  ]
+  let lastErr: Error = new Error('all endpoints failed')
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+        headers: { 'Accept': 'application/json' },
+      })
+      if (!res.ok) continue
+      // Content-TypeがJSONであることを確認
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.includes('json')) continue
+      return res
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e))
+    }
+  }
+  throw lastErr
 }
 
 const _quoteCache = new Map<string, { ts: number; data: StockData }>()
@@ -457,12 +464,18 @@ function _flushTransQueue() {
   if (_transTimer) return
   _transTimer = setTimeout(async () => {
     _transTimer = null
-    while (_transQueue.length > 0) {
+    // 一度に処理する上限（メモリ保護）
+    const MAX_BATCH = 50
+    let processed = 0
+    while (_transQueue.length > 0 && processed < MAX_BATCH) {
       const item = _transQueue.shift()!
       const result = await _translateOnce(item.text).catch(() => item.text)
       item.resolve(result)
       await _sleep(100)
+      processed++
     }
+    // まだ残っていれば継続
+    if (_transQueue.length > 0) _flushTransQueue()
   }, 100)
 }
 
@@ -487,13 +500,11 @@ export async function generateArticleBody(article: {
   if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
 
   const key = _getOpenRouterKey()
-  console.log('[generateArticleBody] start, hasKey:', !!key, 'title:', article.title.slice(0, 40))
 
   // AIキーあり → Qwen3で解説＋批評生成
   if (key) {
     try {
-      console.log('[generateArticleBody] calling OpenRouter...')
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -532,14 +543,12 @@ export async function generateArticleBody(article: {
         }),
         signal: AbortSignal.timeout(25000),
       })
-      console.log('[generateArticleBody] response status:', res.status)
-      if (res.ok) {
+          if (res.ok) {
         const data = await res.json()
         let result = (data.choices?.[0]?.message?.content || '')
           .replace(/<think>[\s\S]*?<\/think>/gi, '')
           .trim()
-        console.log('[generateArticleBody] AI result length:', result.length, 'preview:', result.slice(0, 80))
-        if (result.length > 50) {
+              if (result.length > 50) {
           _bodyCache.set(article.url, result)
           return result
         }
@@ -554,7 +563,6 @@ export async function generateArticleBody(article: {
 
   // AIキーなし or 失敗 → descriptionを翻訳
   const desc = article.description || ''
-  console.log('[generateArticleBody] fallback to description, length:', desc.length)
 
   if (!desc) {
     const msg = `${article.source_name} の記事です。元記事から全文をご覧ください。`
@@ -564,10 +572,8 @@ export async function generateArticleBody(article: {
 
   if (_isEnglish(article.title)) {
     try {
-      console.log('[generateArticleBody] translating description...')
-      const translated = await _translateOnce(desc)
-      console.log('[generateArticleBody] translated:', translated.slice(0, 60))
-      if (translated && translated !== desc) {
+          const translated = await _translateOnce(desc)
+          if (translated && translated !== desc) {
         _bodyCache.set(article.url, translated)
         return translated
       }
