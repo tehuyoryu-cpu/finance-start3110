@@ -483,71 +483,103 @@ const _bodyCache = new Map<string, string>()
 export async function generateArticleBody(article: {
   title: string; description: string | null; url: string; source_name: string
 }): Promise<string> {
+  // キャッシュ確認（失敗結果はキャッシュしない）
   if (_bodyCache.has(article.url)) return _bodyCache.get(article.url)!
 
   const key = _getOpenRouterKey()
+  console.log('[generateArticleBody] start, hasKey:', !!key, 'title:', article.title.slice(0, 40))
 
-  // AIキーあり → Qwen3で解説生成
+  // AIキーあり → Qwen3で解説＋批評生成
   if (key) {
     try {
+      console.log('[generateArticleBody] calling OpenRouter...')
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
-                   'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+          'X-Title': 'Finance Start',
+        },
         body: JSON.stringify({
-          model: 'qwen/qwen3-30b-a3b:free', max_tokens: 1200, temperature: 0.5,
+          model: 'qwen/qwen3-30b-a3b:free',
+          max_tokens: 1200,
+          temperature: 0.5,
           messages: [
-            { role: 'system', content: 'ニュース解説AIです。思考過程は出力せず解説本文のみ出力します。' },
-            { role: 'user', content:
-              `以下のニュース記事を日本語で解説・批評してください。
+            {
+              role: 'system',
+              content: 'あなたはニュース解説・批評AIです。<think>タグを含む思考過程は一切出力せず、指示された形式の本文のみ出力します。',
+            },
+            {
+              role: 'user',
+              content: `以下のニュース記事を日本語で解説・批評してください。
 
 タイトル: ${article.title}
 概要: ${article.description || 'なし'}
 出典: ${article.source_name}
 
-以下の構成で出力してください（各セクションは改行で区切る）：
+必ず以下の形式で出力してください：
 
 【解説】
 記事の背景・内容・意義を150〜200字で説明。
 
 【批評・反論】
-この記事への反対意見、出典の少なさ・偏り・誇張の可能性、別の視点からの異論を150〜200字で鋭く指摘。事実として断定せず「〜という見方もある」「〜が懸念される」など批評的スタンスで。
+この記事への反対意見、出典の少なさ・偏り・誇張の可能性、別視点からの異論を150〜200字で鋭く指摘。「〜という見方もある」「〜が懸念される」など批評的スタンスで記述。
 
-本文のみ出力。見出し記号（【】）はそのまま使用。` },
+上記2セクションのみ出力すること。`,
+            },
           ],
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(25000),
       })
+      console.log('[generateArticleBody] response status:', res.status)
       if (res.ok) {
         const data = await res.json()
-        const result = (data.choices?.[0]?.message?.content || '')
-          .replace(/<think>[\s\S]*?<\/think>/g, '').trim()
-        if (result.length > 50) { _bodyCache.set(article.url, result); return result }
+        let result = (data.choices?.[0]?.message?.content || '')
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          .trim()
+        console.log('[generateArticleBody] AI result length:', result.length, 'preview:', result.slice(0, 80))
+        if (result.length > 50) {
+          _bodyCache.set(article.url, result)
+          return result
+        }
+      } else {
+        const errText = await res.text()
+        console.warn('[generateArticleBody] API error:', res.status, errText.slice(0, 200))
       }
-    } catch (e) { console.warn('[article] AI:', e) }
+    } catch (e) {
+      console.warn('[generateArticleBody] AI fetch failed:', e)
+    }
   }
 
-  // AIキーなし or 失敗 → descriptionを翻訳して表示
+  // AIキーなし or 失敗 → descriptionを翻訳
   const desc = article.description || ''
+  console.log('[generateArticleBody] fallback to description, length:', desc.length)
+
   if (!desc) {
     const msg = `${article.source_name} の記事です。元記事から全文をご覧ください。`
     _bodyCache.set(article.url, msg)
     return msg
   }
 
-  const isEn = _isEnglish(article.title)
-  if (isEn) {
+  if (_isEnglish(article.title)) {
     try {
+      console.log('[generateArticleBody] translating description...')
       const translated = await _translateOnce(desc)
-      const result = translated !== desc ? translated : desc
-      _bodyCache.set(article.url, result)
-      return result
-    } catch { /* fall through */ }
+      console.log('[generateArticleBody] translated:', translated.slice(0, 60))
+      if (translated && translated !== desc) {
+        _bodyCache.set(article.url, translated)
+        return translated
+      }
+    } catch (e) {
+      console.warn('[generateArticleBody] translate failed:', e)
+    }
   }
 
   _bodyCache.set(article.url, desc)
   return desc
 }
+
 
 // ═══════════════════════════════════════════════════════
 // 検索エンジン
