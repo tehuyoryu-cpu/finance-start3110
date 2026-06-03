@@ -488,39 +488,15 @@ export async function generateArticleBody(article: {
 
   const key = _getOpenRouterKey()
 
-  // AIキーあり → Qwen3で解説＋批評生成
+  // AIキーあり → 複数モデルをフォールバックしながら解説＋批評生成
   if (key) {
-    try {
-          // 複数モデルをフォールバック（廃止対策）
-      const MODELS = [
-        'qwen/qwen3.6-plus-preview:free',
-        'qwen/qwen3-235b-a22b:free',
-        'meta-llama/llama-3.3-70b-instruct:free',
-        'mistralai/mistral-7b-instruct:free',
-      ]
-      let res: Response | null = null
-      for (const model of MODELS) {
-        try {
-          const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${key}`,
-              'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-              'X-Title': 'Finance Start',
-            },
-            body: JSON.stringify({
-              model,
-              max_tokens: 1200,
-              temperature: 0.5,
-              messages: [
-                {
-                  role: 'system',
-                  content: 'あなたはニュース解説・批評AIです。思考過程は出力せず、指示された形式のみ出力します。',
-                },
-                {
-                  role: 'user',
-                  content: `以下のニュース記事を日本語で解説・批評してください。
+    const MODELS = [
+      'qwen/qwen3.6-plus-preview:free',
+      'qwen/qwen3-235b-a22b:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'mistralai/mistral-7b-instruct:free',
+    ]
+    const PROMPT = `以下のニュース記事を日本語で解説・批評してください。
 
 タイトル: ${article.title}
 概要: ${article.description || 'なし'}
@@ -534,34 +510,44 @@ export async function generateArticleBody(article: {
 【批評・反論】
 反対意見、出典の少なさ・偏り・誇張の可能性、別視点からの異論を150〜200字で鋭く指摘。批評的スタンスで記述。
 
-上記2セクションのみ出力。`,
-                },
-              ],
-            }),
-            signal: AbortSignal.timeout(25000),
-          })
-          if (r.ok) { res = r; break }
-          const errText = await r.text()
-          console.warn(`[article] model ${model} failed:`, r.status, errText.slice(0, 100))
-        } catch (e) {
-          console.warn(`[article] model ${model} error:`, e)
+上記2セクションのみ出力。`
+
+    for (const model of MODELS) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`,
+            'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+            'X-Title': 'Finance Start',
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 1200,
+            temperature: 0.5,
+            messages: [
+              { role: 'system', content: 'あなたはニュース解説・批評AIです。思考過程は出力せず、指示された形式のみ出力します。' },
+              { role: 'user', content: PROMPT },
+            ],
+          }),
+          signal: AbortSignal.timeout(25000),
+        })
+        if (!res.ok) {
+          console.warn(`[article] ${model} HTTP ${res.status}`)
+          continue
         }
-      }
-          if (res.ok) {
         const data = await res.json()
-        let result = (data.choices?.[0]?.message?.content || '')
+        const result = (data.choices?.[0]?.message?.content || '')
           .replace(/<think>[\s\S]*?<\/think>/gi, '')
           .trim()
-              if (result.length > 50) {
+        if (result.length > 50) {
           _bodyCache.set(article.url, result)
           return result
         }
-      } else {
-        const errText = await res.text()
-        console.warn('[generateArticleBody] API error:', res.status, errText.slice(0, 200))
+      } catch (e) {
+        console.warn(`[article] ${model} error:`, e)
       }
-    } catch (e) {
-      console.warn('[generateArticleBody] AI fetch failed:', e)
     }
   }
 
