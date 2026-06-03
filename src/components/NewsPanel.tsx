@@ -179,31 +179,41 @@ function ReaderModal({ article, prefs, onClose }: {
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
-  // 翻訳 + AI全文生成
+  // 記事が変わるたびにリセットして再取得
   useEffect(() => {
-    const key = localStorage.getItem('openrouter_key')
+    let cancelled = false
 
-    // タイトル翻訳（キー不要、Google/DeepL使用）
+    setTitleJa(article.title)
+    setBody('')
+    setBodyLoading(true)
+
+    // タイトル翻訳（キー不要）
     if (article.lang === 'en') {
-      translateTitle(article.title).then(t => { if (t !== article.title) setTitleJa(t) })
+      translateTitle(article.title).then(t => {
+        if (!cancelled && t !== article.title) setTitleJa(t)
+      })
     }
 
-    // AI全文生成（キーなしでもdescriptionを返す）
-    setBodyLoading(true)
-    setBody('')
+    // 本文生成
     generateArticleBody({
       title:       article.title,
       description: article.description,
       url:         article.url,
       source_name: article.source_name,
     }).then(text => {
+      if (cancelled) return
       setBody(text)
       setBodyLoading(false)
-    }).catch(() => {
-      setBody(article.description || '本文を取得できませんでした')
+    }).catch(e => {
+      if (cancelled) return
+      console.error('[ReaderModal] error:', e)
+      setBody(article.description || '取得に失敗しました。元記事をご覧ください。')
       setBodyLoading(false)
     })
-  }, [article.id]) // eslint-disable-line
+
+    return () => { cancelled = true }
+  }, [article.id, article.title, article.lang, article.url,
+      article.description, article.source_name])
 
   const themeClass = theme === 'light' ? 'bg-white text-zinc-900'
                    : theme === 'sepia' ? 'bg-amber-50 text-amber-900'
@@ -212,14 +222,12 @@ function ReaderModal({ article, prefs, onClose }: {
   const hasKey = !!localStorage.getItem('openrouter_key')
 
   return (
-    // オーバーレイ：クリックで閉じる
     <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto"
          onClick={e => e.target === e.currentTarget && onClose()}>
-      {/* パネル：高さ固定しない、スクロールは内側 */}
       <div className={`relative w-full max-w-2xl my-8 rounded-2xl flex flex-col shadow-2xl ${themeClass}`}
            style={{ minHeight: '60vh' }}>
 
-        {/* ヘッダー（固定） */}
+        {/* ヘッダー */}
         <div className="sticky top-0 z-10 flex items-center gap-2 p-3 bg-zinc-950 text-white rounded-t-2xl flex-shrink-0">
           <span className="flex-1 text-xs font-bold truncate">{titleJa}</span>
           <div className="flex gap-1 flex-shrink-0">
@@ -247,7 +255,7 @@ function ReaderModal({ article, prefs, onClose }: {
             })}</span>
           )}
           {!hasKey && (
-            <span className="text-yellow-400">⚠ APIキー設定でAI解説が使えます</span>
+            <span className="text-yellow-400 text-xs">⚠ APIキー設定でAI解説が使えます</span>
           )}
           <a href={article.url} target="_blank" rel="noopener noreferrer"
             className="ml-auto text-blue-400 hover:text-blue-300 font-semibold transition-colors">
@@ -257,30 +265,26 @@ function ReaderModal({ article, prefs, onClose }: {
             className="hover:text-blue-400 transition-colors">🔍</button>
         </div>
 
-        {/* 本文（スクロールしない、全て展開） */}
+        {/* 本文 */}
         <div className="p-6" style={{ fontSize: fontSize + 'px', lineHeight: 1.9 }}>
-
-          {/* サムネイル */}
           {article.top_image && (
             <img src={article.top_image} alt=""
               className="w-full rounded-xl mb-5 max-h-64 object-cover"
               onError={e => (e.currentTarget.style.display = 'none')} />
           )}
 
-          {/* タイトル */}
           <h2 className="text-xl font-bold mb-1 leading-snug">{titleJa}</h2>
           {titleJa !== article.title && (
             <p className="text-xs text-zinc-500 mb-5">{article.title}</p>
           )}
 
-          {/* 本文 */}
           {bodyLoading ? (
             <div className="space-y-3 mt-4">
               <div className="flex items-center gap-2 text-xs text-blue-400">
                 <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin inline-block" />
-                {hasKey ? 'Qwen3 AI が解説を生成中...' : '概要を取得中...'}
+                {hasKey ? 'Qwen3 AI が解説・批評を生成中...' : '翻訳中...'}
               </div>
-              {[...Array(8)].map((_, i) => (
+              {[...Array(6)].map((_, i) => (
                 <div key={i} className="h-3 bg-zinc-700 rounded animate-pulse"
                   style={{ width: `${60 + (i * 13) % 40}%` }} />
               ))}
@@ -288,21 +292,17 @@ function ReaderModal({ article, prefs, onClose }: {
           ) : (
             <div>
               {hasKey && (
-                <div className="text-xs text-blue-400 mb-4 flex items-center gap-1">
-                  ✨ Qwen3 AI による解説・批評
-                </div>
+                <div className="text-xs text-blue-400 mb-4">✨ Qwen3 AI による解説・批評</div>
               )}
               <ArticleBody text={body} />
+              <div className={`mt-8 pt-5 border-t ${borderClass}`}>
+                <a href={article.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
+                  元記事を読む（{article.source_name}）↗
+                </a>
+              </div>
             </div>
           )}
-
-          {/* 元記事リンク */}
-          <div className={`mt-8 pt-5 border-t ${borderClass}`}>
-            <a href={article.url} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95">
-              元記事を読む（{article.source_name}）↗
-            </a>
-          </div>
         </div>
       </div>
     </div>
@@ -311,11 +311,9 @@ function ReaderModal({ article, prefs, onClose }: {
 
 // ─── 記事本文レンダラー（【解説】【批評】対応） ──────────────────────────────
 function ArticleBody({ text }: { text: string }) {
-  // 【セクション名】で分割
   const sections = text.split(/(【[^】]+】)/).filter(Boolean)
 
   if (sections.length <= 1) {
-    // セクション分けなし（翻訳のみ or AIキーなし）
     return <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
   }
 
@@ -329,13 +327,9 @@ function ArticleBody({ text }: { text: string }) {
       const isCritique = label.includes('批評') || label.includes('反論') || label.includes('批判')
       rendered.push(
         <div key={i} className={`mb-5 rounded-xl p-4 border ${
-          isCritique
-            ? 'bg-red-950/40 border-red-800/50'
-            : 'bg-zinc-800/50 border-zinc-700/50'
+          isCritique ? 'bg-red-950/40 border-red-800/50' : 'bg-zinc-800/50 border-zinc-700/50'
         }`}>
-          <div className={`text-xs font-bold mb-2 flex items-center gap-1 ${
-            isCritique ? 'text-red-400' : 'text-blue-400'
-          }`}>
+          <div className={`text-xs font-bold mb-2 ${isCritique ? 'text-red-400' : 'text-blue-400'}`}>
             {isCritique ? '⚠️' : '📋'} {label}
           </div>
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
@@ -351,6 +345,5 @@ function ArticleBody({ text }: { text: string }) {
       i++
     }
   }
-
   return <div>{rendered}</div>
 }
