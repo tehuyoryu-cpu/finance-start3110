@@ -8,19 +8,29 @@ export default function KnowToday() {
   const [aiLoading, setAiLoading] = useState(false)
 
   useEffect(() => {
-    fetchNews({ limit: 6, lang: 'en' }).then(data => {
-      const titles = data.articles.map(a => a.title_ja || a.title).slice(0, 6)
-      setHeadlines(titles)
-      setLoading(false)
-      setAiLoading(true)
-      return summarizeWithAI(titles.join('\n'))
-    }).then(s => {
-      setSummary(s)
-      setAiLoading(false)
-    }).catch(() => {
-      setLoading(false)
-      setAiLoading(false)
-    })
+    let cancelled = false
+
+    fetchNews({ limit: 6, lang: 'en' })
+      .then(data => {
+        if (cancelled) return
+        const titles = data.articles.map(a => a.title).slice(0, 6)
+        setHeadlines(titles)
+        setLoading(false)
+
+        const key = localStorage.getItem('openrouter_key')
+        if (!key) return
+
+        setAiLoading(true)
+        return summarizeWithAI(titles.join('\n'))
+          .then(s => { if (!cancelled) setSummary(s) })
+          .catch(() => {})
+          .finally(() => { if (!cancelled) setAiLoading(false) })
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
   }, [])
 
   return (
@@ -29,13 +39,14 @@ export default function KnowToday() {
 
       {aiLoading && (
         <div className="bg-zinc-800 rounded-xl p-3 mb-3 text-xs text-zinc-400 animate-pulse border border-zinc-700">
-          ✨ Qwen3 AI が要約中...
+          <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mr-2" />
+          Qwen3 AI が要約中...
         </div>
       )}
       {summary && (
-        <div className="animate-fade-up bg-zinc-800 rounded-xl p-3 mb-3 text-sm text-zinc-200 whitespace-pre-line border border-zinc-700">
+        <div className="bg-zinc-800 rounded-xl p-3 mb-3 text-sm text-zinc-200 whitespace-pre-line border border-zinc-700">
           <span className="text-xs text-blue-400 font-semibold block mb-1">✨ AI Summary (Qwen3)</span>
-          {summary}
+          {summary.replace(/<think>[\s\S]*?<\/think>/g, '').trim()}
         </div>
       )}
 
@@ -46,9 +57,9 @@ export default function KnowToday() {
           ))}
         </div>
       ) : (
-        <ul className="space-y-1.5 stagger">
+        <ul className="space-y-1.5">
           {headlines.map((h, i) => (
-            <li key={i} className="animate-fade-up text-xs text-zinc-400 flex gap-2">
+            <li key={i} className="text-xs text-zinc-400 flex gap-2">
               <span className="text-zinc-600 flex-shrink-0">·</span>
               <span>{h}</span>
             </li>
