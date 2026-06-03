@@ -421,7 +421,7 @@ async function _translateOnce(text: string): Promise<string> {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                    'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.3-70b-instruct:free',
+          model: 'qwen/qwen3-next-80b-a3b-instruct:free',
           max_tokens: 200, temperature: 0.1,
           messages: [
             { role: 'system', content: '英語を自然な日本語に翻訳。翻訳文のみ出力。' },
@@ -607,7 +607,7 @@ export async function summarizeWithAI(text: string): Promise<string> {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
     body: JSON.stringify({
-      model: 'meta-llama/llama-3.3-70b-instruct:free', max_tokens: 400,
+      model: 'qwen/qwen3-next-80b-a3b-instruct:free', max_tokens: 400,
       messages: [
         { role: 'system', content: 'ニュース要約AIです。思考過程は出力しません。' },
         { role: 'user', content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` },
