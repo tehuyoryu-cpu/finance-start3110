@@ -222,28 +222,13 @@ export async function fetchNews(params: {
 // 開発時: /proxy/yahoo → query1.finance.yahoo.com (Viteプロキシ)
 // 本番時: query2に直接（CORSが通る場合）
 async function _yahooFetch(path: string): Promise<Response> {
-  const endpoints = [
-    '/proxy/yahoo' + path,
-    'https://query2.finance.yahoo.com' + path,
-    'https://query1.finance.yahoo.com' + path,
-  ]
-  let lastErr: Error = new Error('all endpoints failed')
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(10000),
-        headers: { 'Accept': 'application/json' },
-      })
-      if (!res.ok) continue
-      // Content-TypeがJSONであることを確認
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.includes('json')) continue
-      return res
-    } catch (e) {
-      lastErr = e instanceof Error ? e : new Error(String(e))
-    }
-  }
-  throw lastErr
+  // Viteプロキシ経由のみ（直接fetchはchrome拡張環境でCORSブロックされる）
+  const res = await fetch('/proxy/yahoo' + path, {
+    signal: AbortSignal.timeout(10000),
+    headers: { 'Accept': 'application/json' },
+  })
+  if (!res.ok) throw new Error('Yahoo Finance HTTP ' + res.status)
+  return res
 }
 
 const _quoteCache = new Map<string, { ts: number; data: StockData }>()
@@ -415,17 +400,17 @@ async function _translateOnce(text: string): Promise<string> {
   if (!text) return text
   if (_translateCache.has(text)) return _translateCache.get(text)!
 
-  // 1. DeepL Web（高品質）
-  try {
-    const r = await _deeplWeb(text)
-    if (r && r !== text) { _translateCache.set(text, r); return r }
-  } catch (e) { console.warn('[trans] DeepL:', e) }
-
-  // 2. Google翻訳（フォールバック）
+  // 1. Google翻訳（CORSヘッダーあり、直接fetchで動作）
   try {
     const r = await _googleTranslate(text)
     if (r && r !== text) { _translateCache.set(text, r); return r }
   } catch (e) { console.warn('[trans] Google:', e) }
+
+  // 2. DeepL Web（ブラウザからは動作するがchrome拡張からはCORSブロックの場合あり）
+  try {
+    const r = await _deeplWeb(text)
+    if (r && r !== text) { _translateCache.set(text, r); return r }
+  } catch (e) { console.warn('[trans] DeepL:', e) }
 
   // 3. OpenRouter AI（キーある時のみ）
   const key = _getOpenRouterKey()
@@ -436,7 +421,7 @@ async function _translateOnce(text: string): Promise<string> {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                    'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
         body: JSON.stringify({
-          model: 'qwen/qwen3-30b-a3b:free', max_tokens: 200, temperature: 0.1,
+          model: 'qwen/qwen3-235b-a22b:free', max_tokens: 200, temperature: 0.1,
           messages: [
             { role: 'system', content: '英語を自然な日本語に翻訳。翻訳文のみ出力。' },
             { role: 'user', content: text },
@@ -513,7 +498,7 @@ export async function generateArticleBody(article: {
           'X-Title': 'Finance Start',
         },
         body: JSON.stringify({
-          model: 'qwen/qwen3-30b-a3b:free',
+          model: 'qwen/qwen3-235b-a22b:free',
           max_tokens: 1200,
           temperature: 0.5,
           messages: [
@@ -617,7 +602,7 @@ export async function summarizeWithAI(text: string): Promise<string> {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
                'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110' },
     body: JSON.stringify({
-      model: 'qwen/qwen3-30b-a3b:free', max_tokens: 400,
+      model: 'qwen/qwen3-235b-a22b:free', max_tokens: 400,
       messages: [
         { role: 'system', content: 'ニュース要約AIです。思考過程は出力しません。' },
         { role: 'user', content: `以下のニュースタイトルを3〜5行の日本語で要約。箇条書きで。\n\n${text}` },
