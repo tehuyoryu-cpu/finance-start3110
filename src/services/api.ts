@@ -491,11 +491,12 @@ export async function generateArticleBody(article: {
   // AIキーあり → 複数モデルをフォールバックしながら解説＋批評生成
   if (key) {
     const MODELS = [
-      'qwen/qwen3.6-plus-preview:free',
-      'qwen/qwen3-235b-a22b:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-    ]
+        'qwen/qwen3-next-80b-a3b-instruct:free',
+        'openai/gpt-oss-120b:free',
+        'google/gemma-4-31b-it:free',
+        'z-ai/glm-4.5-air:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
+      ]
     const PROMPT = `あなたは優秀なジャーナリストです。以下のニュース記事の情報をもとに、実際にその記事を読んだかのように詳しく日本語で解説・批評してください。
 
 【記事情報】
