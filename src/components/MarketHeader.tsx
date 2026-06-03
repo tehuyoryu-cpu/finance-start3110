@@ -1,64 +1,50 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { fetchQuote } from '../services/api'
 
 const SYMBOLS = [
-  { ticker: '^N225',   label: '日経平均',  flag: '🇯🇵' },
-  { ticker: '^GSPC',   label: 'S&P 500',   flag: '🇺🇸' },
-  { ticker: '^IXIC',   label: 'NASDAQ',    flag: '🇺🇸' },
-  { ticker: '^DJI',    label: 'ダウ',      flag: '🇺🇸' },
-  { ticker: 'JPY=X',   label: 'USD/JPY',   flag: '💴' },
-  { ticker: 'BTC-USD', label: 'BTC',       flag: '₿' },
-  { ticker: 'GC=F',    label: 'GOLD',      flag: '🥇' },
-  { ticker: '^TNX',    label: '米10年債',  flag: '📊' },
+  { ticker: '^N225',   label: '日経平均', flag: '🇯🇵' },
+  { ticker: '^GSPC',   label: 'S&P 500',  flag: '🇺🇸' },
+  { ticker: '^IXIC',   label: 'NASDAQ',   flag: '🇺🇸' },
+  { ticker: '^DJI',    label: 'ダウ',     flag: '🇺🇸' },
+  { ticker: 'JPY=X',   label: 'USD/JPY',  flag: '💴' },
+  { ticker: 'BTC-USD', label: 'BTC',      flag: '₿' },
+  { ticker: 'GC=F',    label: 'GOLD',     flag: '🥇' },
+  { ticker: '^TNX',    label: '米10年債', flag: '📊' },
 ]
 
-type QuoteState = {
-  price: number
-  changePercent: number
-  error?: string
-  loading: boolean
-}
+type QuoteState = { price: number; changePercent: number; error?: string; loading: boolean }
 
 export default function MarketHeader() {
   const [data, setData] = useState<Record<string, QuoteState>>(
     Object.fromEntries(SYMBOLS.map(s => [s.ticker, { price: 0, changePercent: 0, loading: true }]))
   )
 
-  const refresh = async () => {
-    // 並列fetchだと全部CORSエラーになりやすいので少し間隔をあける
+  const refresh = useCallback(() => {
     for (const s of SYMBOLS) {
-      fetchQuote(s.ticker).then(q => {
-        setData(prev => ({
+      fetchQuote(s.ticker)
+        .then(q => setData(prev => ({
           ...prev,
-          [s.ticker]: {
-            price: q.price,
-            changePercent: q.changePercent,
-            error: q.error,
-            loading: false,
-          }
-        }))
-      }).catch(() => {
-        setData(prev => ({
+          [s.ticker]: { price: q.price, changePercent: q.changePercent, error: q.error, loading: false },
+        })))
+        .catch(() => setData(prev => ({
           ...prev,
-          [s.ticker]: { price: 0, changePercent: 0, error: 'err', loading: false }
-        }))
-      })
+          [s.ticker]: { price: 0, changePercent: 0, error: 'err', loading: false },
+        })))
     }
-  }
+  }, [])
 
   useEffect(() => {
     refresh()
     const timer = setInterval(refresh, 3 * 60 * 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [refresh])
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
       {SYMBOLS.map(s => {
         const d = data[s.ticker]
-        const isUp = (d?.changePercent ?? 0) >= 0
+        const isUp   = (d?.changePercent ?? 0) >= 0
         const hasData = d && !d.loading && d.price > 0
-
         return (
           <div key={s.ticker}
             className="bg-zinc-900 rounded-xl p-3 border border-zinc-800 hover:border-zinc-700 transition-all hover:-translate-y-0.5">
