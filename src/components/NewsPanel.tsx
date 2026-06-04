@@ -42,6 +42,17 @@ export default function NewsPanel({ prefs }: Props) {
       const data = await fetchNews({ category, lang, q, page: p, limit: 20 })
       setArticles(data.articles)
       setTotal(data.total); setPages(data.pages); setPage(p)
+      // 上位3件をバックグラウンドでプリフェッチ（クリック時に即表示）
+      if (localStorage.getItem('openrouter_key')) {
+        data.articles.slice(0, 3).forEach(a => {
+          setTimeout(() => {
+            generateArticleBody({
+              title: a.title, description: a.description,
+              url: a.url, source_name: a.source_name,
+            }).catch(() => {})
+          }, 2000) // 2秒後に開始（UI描画を優先）
+        })
+      }
     } catch (e) { setError(String(e)) }
     finally { setLoading(false) }
   }, [category, lang, q])
