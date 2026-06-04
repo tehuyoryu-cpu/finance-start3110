@@ -224,7 +224,7 @@ function ReaderModal({ article, prefs, onClose }: {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 overflow-y-auto"
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="flex items-start justify-center min-h-full p-4 py-8">
+      <div className="flex justify-center px-4 py-8">
       <div className={`relative w-full max-w-2xl rounded-2xl flex flex-col shadow-2xl ${themeClass}`}
            onClick={e => e.stopPropagation()}>
 
