@@ -482,41 +482,62 @@ const _bodyCache = new Map<string, string>()
 export async function generateArticleBody(article: {
   title: string; description: string | null; url: string; source_name: string
 }): Promise<string> {
-  // キャッシュ確認（失敗結果はキャッシュしない）
   const cached = _bodyCache.get(article.url)
   if (cached && cached.length > 20) return cached
 
   const key = _getOpenRouterKey()
 
-  // AIキーあり → 複数モデルをフォールバックしながら解説＋批評生成
+  // ── 記事HTMLをfetchして本文抽出 ───────────────────────────────────────────
+  let articleText = article.description || ''
+  try {
+    const res = await fetch(article.url, {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,*/*',
+      },
+    })
+    if (res.ok) {
+      const html = await res.text()
+      const extracted = _extractTextFromHtml(html)
+      if (extracted.length > 200) {
+        articleText = extracted
+      }
+    }
+  } catch (e) {
+    console.warn('[article] fetch failed, using description:', e)
+  }
+
+  // AIキーあり → 抽出本文をAIに渡して解説＋批評生成
   if (key) {
     const MODELS = [
-        'qwen/qwen3-next-80b-a3b-instruct:free',
-        'openai/gpt-oss-120b:free',
-        'google/gemma-4-31b-it:free',
-        'z-ai/glm-4.5-air:free',
-        'meta-llama/llama-3.3-70b-instruct:free',
-      ]
-    const PROMPT = `あなたは優秀なジャーナリストです。以下のニュース記事の情報をもとに、実際にその記事を読んだかのように詳しく日本語で解説・批評してください。
+      'qwen/qwen3-next-80b-a3b-instruct:free',
+      'openai/gpt-oss-120b:free',
+      'google/gemma-4-31b-it:free',
+      'z-ai/glm-4.5-air:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+    ]
+    const PROMPT = `あなたは優秀なジャーナリストです。以下のニュース記事を読み、詳しく日本語で解説・批評してください。
 
 【記事情報】
 タイトル: ${article.title}
-概要: ${article.description || 'なし'}
 出典: ${article.source_name}
+本文:
+${articleText.slice(0, 3000)}
 
 【重要な指示】
-- 概要に含まれる具体的な固有名詞・数字・出来事を必ず活用すること
+- 記事に登場する固有名詞・数字・人物・組織を必ず活用すること
 - 推測や一般論で埋めず、記事の内容に忠実に書くこと
 - 各セクション300字以上書くこと
-- 思考過程・前置き・見出し以外のメタコメントは不要
+- 思考過程・前置きは不要
 
 必ず以下の形式で出力：
 
 【解説】
-記事で報じられている具体的な内容（誰が・何を・いつ・どこで・なぜ）を詳しく説明する。背景となる業界動向や社会的文脈も加える。記事に登場する人物・組織・数字を積極的に使い、読者が記事を読んだのと同等の理解を得られるよう300字以上で書く。
+記事で報じられている内容（誰が・何を・いつ・どこで・なぜ）を詳しく説明。背景となる業界動向や社会的文脈も加える。300字以上。
 
 【批評・反論】
-この記事・報道への批判的視点を300字以上で述べる。具体的に：出典の信頼性・一次情報の有無・数字の根拠・取材対象の偏り・反論側の主張・記事が触れていない重要な文脈・誇張表現の可能性・利害関係者の視点の欠如などを鋭く指摘すること。「〜という見方もある」「〜が懸念される」など批評的スタンスで。`
+この記事への批判的視点を300字以上で述べる。出典の信頼性・一次情報の有無・数字の根拠・取材対象の偏り・記事が触れていない重要な文脈・誇張表現の可能性・利害関係者の視点の欠如などを鋭く指摘。「〜という見方もある」「〜が懸念される」など批評的スタンスで。`
 
     for (const model of MODELS) {
       try {
@@ -537,43 +558,9 @@ export async function generateArticleBody(article: {
               { role: 'user', content: PROMPT },
             ],
           }),
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(30000),
         })
         if (!res.ok) {
-          if (res.status === 429) {
-            // レート制限 → 3秒待って同モデルを1回リトライ
-            await _sleep(3000)
-            try {
-              const retry = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${key}`,
-                  'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-                  'X-Title': 'Finance Start',
-                },
-                body: JSON.stringify({
-                  model,
-                  max_tokens: 2000,
-                  temperature: 0.5,
-                  messages: [
-                    { role: 'system', content: 'あなたは優秀なジャーナリストです。思考過程は出力せず、指示された形式のみ出力します。' },
-                    { role: 'user', content: PROMPT },
-                  ],
-                }),
-                signal: AbortSignal.timeout(25000),
-              })
-              if (retry.ok) {
-                const data = await retry.json()
-                const result = (data.choices?.[0]?.message?.content || '')
-                  .replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
-                if (result.length > 50) {
-                  _bodyCache.set(article.url, result)
-                  return result
-                }
-              }
-            } catch { /* リトライ失敗 → 次のモデルへ */ }
-          }
           console.warn(`[article] ${model} HTTP ${res.status}`)
           continue
         }
@@ -591,9 +578,8 @@ export async function generateArticleBody(article: {
     }
   }
 
-  // AIキーなし or 失敗 → descriptionを翻訳
-  const desc = article.description || ''
-
+  // AIキーなし or 失敗 → 本文を翻訳して表示
+  const desc = articleText || article.description || ''
   if (!desc) {
     const msg = `${article.source_name} の記事です。元記事から全文をご覧ください。`
     _bodyCache.set(article.url, msg)
@@ -602,18 +588,51 @@ export async function generateArticleBody(article: {
 
   if (_isEnglish(article.title)) {
     try {
-          const translated = await _translateOnce(desc)
-          if (translated && translated !== desc) {
-        _bodyCache.set(article.url, translated)
-        return translated
-      }
-    } catch (e) {
-      console.warn('[generateArticleBody] translate failed:', e)
-    }
+      const descJa = await _translateOnce(desc.slice(0, 1000))
+      const result = `【概要（翻訳）】\n${descJa || desc}\n\n【批評・反論】\nAIキー未設定のため自動批評は利用できません。OpenRouterのAPIキーを設定すると、AI による解説・批評が表示されます。`
+      _bodyCache.set(article.url, result)
+      return result
+    } catch { /* fall through */ }
   }
 
-  _bodyCache.set(article.url, desc)
-  return desc
+  const result = `【概要】\n${desc}\n\n【批評・反論】\nAIキー未設定のため自動批評は利用できません。`
+  _bodyCache.set(article.url, result)
+  return result
+}
+
+// ── HTML から本文テキストを抽出 ──────────────────────────────────────────────
+function _extractTextFromHtml(html: string): string {
+  // 不要タグを除去
+  let body = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+
+  // 本文候補セレクター（優先順）
+  const candidates = [
+    /<article[^>]*>([\s\S]*?)<\/article>/i,
+    /<main[^>]*>([\s\S]*?)<\/main>/i,
+    /class="[^"]*(?:article|post|entry|content|story)[^"]*"[^>]*>([\s\S]{300,}?)<\/(?:div|section|article)>/i,
+  ]
+  for (const re of candidates) {
+    const m = body.match(re)
+    if (m && m[1]?.length > 200) { body = m[1]; break }
+  }
+
+  return body
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 4000)
 }
 
 
