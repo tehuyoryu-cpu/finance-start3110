@@ -8,8 +8,6 @@
   },
   "permissions": ["storage"],
   "host_permissions": [
-    "https://finnhub.io/*",
-    "https://gnews.io/*",
-    "https://api.anthropic.com/*"
+    "<all_urls>"
   ]
 }
