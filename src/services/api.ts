@@ -544,6 +544,8 @@ export async function generateArticleBody(article: {
   const cached = _bodyCache.get(article.url)
   if (cached && cached.length > 20) return cached
 
+  // 利用可能なキーがあるか確認
+  const hasKey = _hasOpenRouterKey()
   const key = _getOpenRouterKey()
 
   // ── 記事HTMLをfetchして本文抽出 ───────────────────────────────────────────
@@ -747,7 +749,7 @@ export function buildSearchUrl(query: string, engine = 'google'): string {
 
 export async function summarizeWithAI(text: string): Promise<string> {
   const key = _getOpenRouterKey()
-  if (!key) throw new Error('no key')
+  if (!key) throw new Error('no key') // 全キー試行済み
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
