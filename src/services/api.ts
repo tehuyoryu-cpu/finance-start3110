@@ -97,9 +97,41 @@ function _isEnglish(text: string): boolean {
   return ascii / text.length > 0.7
 }
 
+// ── 複数APIキー管理（ラウンドロビンで負荷分散） ───────────────────────────────
+const KEYS_STORAGE = 'openrouter_keys' // JSON配列で保存
+let _keyIndex = 0
+
+export function getOpenRouterKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(KEYS_STORAGE)
+    const keys: string[] = raw ? JSON.parse(raw) : []
+    // 後方互換: 旧キー（openrouter_key）も含める
+    const legacy = localStorage.getItem('openrouter_key') || ''
+    if (legacy && !keys.includes(legacy)) keys.unshift(legacy)
+    return keys.filter(k => k.trim().length > 0)
+  } catch { return [] }
+}
+
+export function saveOpenRouterKeys(keys: string[]): void {
+  const cleaned = keys.map(k => k.trim()).filter(k => k.length > 0)
+  localStorage.setItem(KEYS_STORAGE, JSON.stringify(cleaned))
+  // 後方互換: 1つ目を旧フィールドにも保存
+  if (cleaned[0]) localStorage.setItem('openrouter_key', cleaned[0])
+  else localStorage.removeItem('openrouter_key')
+}
+
+/** ラウンドロビンで次のキーを返す */
 function _getOpenRouterKey(): string {
-  return localStorage.getItem('openrouter_key') ||
-    (import.meta as { env?: { VITE_OPENROUTER_KEY?: string } }).env?.VITE_OPENROUTER_KEY || ''
+  const keys = getOpenRouterKeys()
+  if (!keys.length) return ''
+  const key = keys[_keyIndex % keys.length]
+  _keyIndex = (_keyIndex + 1) % keys.length
+  return key
+}
+
+/** キーが1つ以上設定されているか */
+export function hasAnyKey(): boolean {
+  return getOpenRouterKeys().length > 0
 }
 
 // ═══════════════════════════════════════════════════════
@@ -593,10 +625,17 @@ ${articleText.slice(0, 3000)}
             })
 
             if (res.status === 429) {
-              const wait = 3000 * Math.pow(2, attempt) // 3秒→6秒→12秒
-              console.warn(`[article] ${model} 429 rate limit, retry in ${wait}ms`)
-              await _sleep(wait)
-              continue // 同じモデルでリトライ
+              // 次のキーで即リトライ（キーが1つしかなければ待機）
+              const keys = getOpenRouterKeys()
+              if (keys.length > 1) {
+                console.warn(`[article] ${model} 429, switching key`)
+                // _keyIndex を進めて次のキーへ（次ループで反映）
+              } else {
+                const wait = 3000 * Math.pow(2, attempt)
+                console.warn(`[article] ${model} 429, wait ${wait}ms`)
+                await _sleep(wait)
+              }
+              continue
             }
 
             if (!res.ok) {
