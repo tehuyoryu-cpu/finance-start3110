@@ -477,6 +477,33 @@ export function translateTitle(title: string): Promise<string> {
 // 記事全文（AIキーあり→Qwen3解説、なし→翻訳+description）
 // ═══════════════════════════════════════════════════════
 
+// ── AIリクエストキュー（同時1件に制限してレート制限を回避） ─────────────────
+const _aiQueue = (() => {
+  let _running = false
+  const _queue: Array<() => Promise<void>> = []
+
+  function _next() {
+    if (_running || _queue.length === 0) return
+    _running = true
+    const task = _queue.shift()!
+    task().finally(() => {
+      _running = false
+      _next()
+    })
+  }
+
+  return {
+    run<T>(fn: () => Promise<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        _queue.push(async () => {
+          try { resolve(await fn()) } catch (e) { reject(e) }
+        })
+        _next()
+      })
+    }
+  }
+})()
+
 const _bodyCache = new Map<string, string>()
 
 export async function generateArticleBody(article: {
@@ -539,42 +566,63 @@ ${articleText.slice(0, 3000)}
 【批評・反論】
 この記事への批判的視点を300字以上で述べる。出典の信頼性・一次情報の有無・数字の根拠・取材対象の偏り・記事が触れていない重要な文脈・誇張表現の可能性・利害関係者の視点の欠如などを鋭く指摘。「〜という見方もある」「〜が懸念される」など批評的スタンスで。`
 
-    for (const model of MODELS) {
-      try {
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${key}`,
-            'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
-            'X-Title': 'Finance Start',
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 2000,
-            temperature: 0.5,
-            messages: [
-              { role: 'system', content: 'あなたはニュース解説・批評AIです。思考過程は出力せず、指示された形式のみ出力します。' },
-              { role: 'user', content: PROMPT },
-            ],
-          }),
-          signal: AbortSignal.timeout(30000),
-        })
-        if (!res.ok) {
-          console.warn(`[article] ${model} HTTP ${res.status}`)
-          continue
+    // グローバルキューで同時リクエスト数を1に制限
+    const result = await _aiQueue.run(async () => {
+      for (const model of MODELS) {
+        // 429リトライ（指数バックオフ）
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${key}`,
+                'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
+                'X-Title': 'Finance Start',
+              },
+              body: JSON.stringify({
+                model,
+                max_tokens: 2000,
+                temperature: 0.5,
+                messages: [
+                  { role: 'system', content: 'あなたはニュース解説・批評AIです。思考過程は出力せず、指示された形式のみ出力します。' },
+                  { role: 'user', content: PROMPT },
+                ],
+              }),
+              signal: AbortSignal.timeout(30000),
+            })
+
+            if (res.status === 429) {
+              const wait = 3000 * Math.pow(2, attempt) // 3秒→6秒→12秒
+              console.warn(`[article] ${model} 429 rate limit, retry in ${wait}ms`)
+              await _sleep(wait)
+              continue // 同じモデルでリトライ
+            }
+
+            if (!res.ok) {
+              console.warn(`[article] ${model} HTTP ${res.status}`)
+              break // 次のモデルへ
+            }
+
+            const data = await res.json()
+            const text = (data.choices?.[0]?.message?.content || '')
+              .replace(/<think>[\s\S]*?<\/think>/gi, '')
+              .trim()
+            if (text.length > 50) return text
+            break // 内容が空なら次のモデルへ
+
+          } catch (e) {
+            console.warn(`[article] ${model} attempt ${attempt + 1} error:`, e)
+            if (attempt < 2) await _sleep(2000)
+          }
         }
-        const data = await res.json()
-        const result = (data.choices?.[0]?.message?.content || '')
-          .replace(/<think>[\s\S]*?<\/think>/gi, '')
-          .trim()
-        if (result.length > 50) {
-          _bodyCache.set(article.url, result)
-          return result
-        }
-      } catch (e) {
-        console.warn(`[article] ${model} error:`, e)
       }
+      return null
+    })
+
+    if (result) {
+      _bodyCache.set(article.url, result)
+      return result
     }
   }
 
