@@ -60,7 +60,7 @@ export default function Dashboard() {
           </button>
           <button onClick={() => setShowSetup(true)}
             className="text-xs text-zinc-500 hover:text-zinc-200 border border-zinc-800 hover:border-zinc-600 rounded-lg px-3 py-1.5 transition-all">
-            🔑 APIキー
+            🔑 APIキー管理
           </button>
         </div>
       </header>
