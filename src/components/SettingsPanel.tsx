@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { savePrefs, type Prefs } from '../services/api'
+import { savePrefs, getOpenRouterKeys, saveOpenRouterKeys, type Prefs } from '../services/api'
 
 const ENGINES = [
   { value: 'google',     label: 'Google' },
@@ -19,9 +19,14 @@ interface Props {
 
 export default function SettingsPanel({ prefs, onUpdate, onClose }: Props) {
   const [local, setLocal] = useState({ ...prefs })
+  const [keys, setKeys]   = useState<string[]>(() => {
+    const k = getOpenRouterKeys()
+    return k.length > 0 ? k : ['']
+  })
 
   const save = async () => {
     await savePrefs(local)
+    saveOpenRouterKeys(keys)
     onUpdate(local)
     onClose()
   }
@@ -69,6 +74,40 @@ export default function SettingsPanel({ prefs, onUpdate, onClose }: Props) {
                 { value: '19', label: '特大 (19px)' },
               ])}
             </div>
+          </div>
+        </div>
+
+        {/* APIキー管理 */}
+        <div>
+          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">
+            OpenRouter APIキー
+            {keys.filter(k=>k.trim()).length > 0 && (
+              <span className="ml-2 normal-case text-blue-400 font-normal">
+                {keys.filter(k=>k.trim()).length}件（ラウンドロビン）
+              </span>
+            )}
+          </p>
+          <div className="space-y-2">
+            {keys.map((k, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <span className="text-xs text-zinc-600 w-4">{i+1}</span>
+                <input
+                  type="password"
+                  value={k}
+                  onChange={e => { const n=[...keys]; n[i]=e.target.value; setKeys(n) }}
+                  placeholder="sk-or-v1-..."
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:border-blue-500 outline-none"
+                />
+                {keys.length > 1 && (
+                  <button onClick={() => setKeys(keys.filter((_,idx)=>idx!==i))}
+                    className="text-zinc-600 hover:text-red-400 text-xs transition-colors">✕</button>
+                )}
+              </div>
+            ))}
+            <button onClick={() => setKeys([...keys, ''])}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+              ＋ キーを追加
+            </button>
           </div>
         </div>
 
