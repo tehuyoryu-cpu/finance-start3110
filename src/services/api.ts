@@ -569,7 +569,7 @@ export async function generateArticleBody(article: {
     console.warn('[article] fetch failed, using description:', e)
   }
 
-  // AIキーあり → 抽出本文をAIに渡して解説＋批評生成
+  // AIキーあり → 抽出本文をAIに渡して解説＋批評生成（複数キーをラウンドロビン）
   if (key) {
     const MODELS = [
       'qwen/qwen3-next-80b-a3b-instruct:free',
