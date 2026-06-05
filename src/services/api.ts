@@ -545,7 +545,7 @@ export async function generateArticleBody(article: {
   if (cached && cached.length > 20) return cached
 
   // 利用可能なキーがあるか確認
-  const hasKey = _hasOpenRouterKey()
+  const hasKey = _getOpenRouterKey()
   const key = _getOpenRouterKey()
 
   // ── 記事HTMLをfetchして本文抽出 ───────────────────────────────────────────
@@ -610,7 +610,7 @@ ${articleText.slice(0, 3000)}
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${_nextKey()}`,
+                'Authorization': `Bearer ${_getNextKey()}`,
                 'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
                 'X-Title': 'Finance Start',
               },
