@@ -610,7 +610,7 @@ ${articleText.slice(0, 3000)}
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${_getNextKey()}`,
+                'Authorization': `Bearer ${_getOpenRouterKey()}`,
                 'HTTP-Referer': 'https://github.com/tehuyoryu-cpu/finance-start3110',
                 'X-Title': 'Finance Start',
               },
