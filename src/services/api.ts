@@ -78,6 +78,17 @@ export interface Prefs {
 
 function _sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
+function _makeSignal(ms: number): AbortSignal {
+  // AbortSignal.timeout は Chrome拡張で使えない場合があるため互換実装
+  try {
+    return AbortSignal.timeout(ms)
+  } catch {
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), ms)
+    return controller.signal
+  }
+}
+
 function _hashStr(s: string): string {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
@@ -190,7 +201,7 @@ async function _fetchSource(source: typeof NEWS_SOURCES[0]): Promise<NewsArticle
   if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.articles
 
   try {
-    const res = await fetch(source.url, { signal: AbortSignal.timeout(12000) })
+    const res = await fetch(source.url, { signal: _makeSignal(12000) })
     if (!res.ok) return []
     const data = await res.json()
     if (data.status !== 'ok') return []
@@ -260,7 +271,7 @@ async function _yahooFetch(path: string): Promise<Response> {
   // 1. Viteプロキシ経由（開発時）
   try {
     const res = await fetch('/proxy/yahoo' + path, {
-      signal: AbortSignal.timeout(8000),
+      signal: _makeSignal(8000),
       headers: { 'Accept': 'application/json' },
     })
     if (res.ok) return res
@@ -269,7 +280,7 @@ async function _yahooFetch(path: string): Promise<Response> {
   // 2. query1 直接（Chrome拡張 manifest host_permissions が通る場合）
   try {
     const res = await fetch(YAHOO_BASE + path, {
-      signal: AbortSignal.timeout(8000),
+      signal: _makeSignal(8000),
       headers: { 'Accept': 'application/json' },
     })
     if (res.ok) return res
@@ -278,7 +289,7 @@ async function _yahooFetch(path: string): Promise<Response> {
   // 3. query2 直接
   try {
     const res = await fetch(YAHOO_BASE2 + path, {
-      signal: AbortSignal.timeout(8000),
+      signal: _makeSignal(8000),
       headers: { 'Accept': 'application/json' },
     })
     if (res.ok) return res
@@ -287,7 +298,7 @@ async function _yahooFetch(path: string): Promise<Response> {
   // 4. allorigins CORSプロキシ経由（最終手段）
   const encoded = encodeURIComponent(YAHOO_BASE + path)
   const res = await fetch(`https://api.allorigins.win/raw?url=${encoded}`, {
-    signal: AbortSignal.timeout(12000),
+    signal: _makeSignal(12000),
     headers: { 'Accept': 'application/json' },
   })
   if (!res.ok) throw new Error('Yahoo Finance HTTP ' + res.status)
@@ -413,7 +424,7 @@ const _translateCache = new Map<string, string>()
 
 async function _googleTranslate(text: string): Promise<string> {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ja&dt=t&q=${encodeURIComponent(text)}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  const res = await fetch(url, { signal: _makeSignal(8000) })
   if (!res.ok) throw new Error('Google HTTP ' + res.status)
   const data = await res.json()
   const segs = data?.[0] as [string, string][] | null
@@ -446,7 +457,7 @@ async function _deeplWeb(text: string): Promise<string> {
       'Referer': 'https://www.deepl.com/translator',
     },
     body: bodyStr,
-    signal: AbortSignal.timeout(8000),
+    signal: _makeSignal(8000),
   })
   if (!res.ok) throw new Error('DeepL HTTP ' + res.status)
   const data = await res.json()
@@ -491,7 +502,7 @@ async function _translateOnce(text: string): Promise<string> {
             { role: 'user', content: text },
           ],
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: _makeSignal(15000),
       })
       if (res.ok) {
         const data = await res.json()
@@ -583,7 +594,7 @@ export async function generateArticleBody(article: {
   let articleText = article.description || ''
   try {
     const res = await fetch(article.url, {
-      signal: AbortSignal.timeout(10000),
+      signal: _makeSignal(10000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml,*/*',
@@ -654,7 +665,7 @@ ${articleText.slice(0, 3000)}
                   { role: 'user', content: PROMPT },
                 ],
               }),
-              signal: AbortSignal.timeout(30000),
+              signal: _makeSignal(30000),
             })
 
             if (res.status === 429) {
