@@ -254,9 +254,40 @@ export async function fetchNews(params: {
 // 開発時: /proxy/yahoo → query1.finance.yahoo.com (Viteプロキシ)
 // 本番時: query2に直接（CORSが通る場合）
 async function _yahooFetch(path: string): Promise<Response> {
-  // Viteプロキシ経由のみ（直接fetchはchrome拡張環境でCORSブロックされる）
-  const res = await fetch('/proxy/yahoo' + path, {
-    signal: AbortSignal.timeout(10000),
+  const YAHOO_BASE = 'https://query1.finance.yahoo.com'
+  const YAHOO_BASE2 = 'https://query2.finance.yahoo.com'
+
+  // 1. Viteプロキシ経由（開発時）
+  try {
+    const res = await fetch('/proxy/yahoo' + path, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json' },
+    })
+    if (res.ok) return res
+  } catch { /* fallthrough */ }
+
+  // 2. query1 直接（Chrome拡張 manifest host_permissions が通る場合）
+  try {
+    const res = await fetch(YAHOO_BASE + path, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json' },
+    })
+    if (res.ok) return res
+  } catch { /* fallthrough */ }
+
+  // 3. query2 直接
+  try {
+    const res = await fetch(YAHOO_BASE2 + path, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json' },
+    })
+    if (res.ok) return res
+  } catch { /* fallthrough */ }
+
+  // 4. allorigins CORSプロキシ経由（最終手段）
+  const encoded = encodeURIComponent(YAHOO_BASE + path)
+  const res = await fetch(`https://api.allorigins.win/raw?url=${encoded}`, {
+    signal: AbortSignal.timeout(12000),
     headers: { 'Accept': 'application/json' },
   })
   if (!res.ok) throw new Error('Yahoo Finance HTTP ' + res.status)
