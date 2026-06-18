@@ -265,44 +265,44 @@ export async function fetchNews(params: {
 // 開発時: /proxy/yahoo → query1.finance.yahoo.com (Viteプロキシ)
 // 本番時: query2に直接（CORSが通る場合）
 async function _yahooFetch(path: string): Promise<Response> {
-  const YAHOO_BASE = 'https://query1.finance.yahoo.com'
+  const YAHOO_BASE  = 'https://query1.finance.yahoo.com'
   const YAHOO_BASE2 = 'https://query2.finance.yahoo.com'
+  const fullUrl1 = YAHOO_BASE  + path
+  const fullUrl2 = YAHOO_BASE2 + path
 
-  // 1. Viteプロキシ経由（開発時）
-  try {
-    const res = await fetch('/proxy/yahoo' + path, {
-      signal: _makeSignal(8000),
-      headers: { 'Accept': 'application/json' },
-    })
-    if (res.ok) return res
-  } catch { /* fallthrough */ }
+  const PROXIES = [
+    // 1. Viteプロキシ（開発時のみ有効）
+    () => fetch('/proxy/yahoo' + path, { signal: _makeSignal(6000), headers: { Accept: 'application/json' } }),
+    // 2. query1 直接
+    () => fetch(fullUrl1, { signal: _makeSignal(8000), headers: { Accept: 'application/json' } }),
+    // 3. query2 直接
+    () => fetch(fullUrl2, { signal: _makeSignal(8000), headers: { Accept: 'application/json' } }),
+    // 4. corsproxy.io
+    () => fetch(`https://corsproxy.io/?${encodeURIComponent(fullUrl1)}`, { signal: _makeSignal(10000) }),
+    // 5. allorigins
+    () => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(fullUrl1)}`, { signal: _makeSignal(10000) }),
+    // 6. thingproxy
+    () => fetch(`https://thingproxy.freeboard.io/fetch/${fullUrl1}`, { signal: _makeSignal(10000) }),
+    // 7. codetabs
+    () => fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(fullUrl1)}`, { signal: _makeSignal(10000) }),
+  ]
 
-  // 2. query1 直接（Chrome拡張 manifest host_permissions が通る場合）
-  try {
-    const res = await fetch(YAHOO_BASE + path, {
-      signal: _makeSignal(8000),
-      headers: { 'Accept': 'application/json' },
-    })
-    if (res.ok) return res
-  } catch { /* fallthrough */ }
+  for (const attempt of PROXIES) {
+    try {
+      const res = await attempt()
+      if (res.ok) {
+        // レスポンスが正しいJSONか確認（プロキシがHTMLを返す場合がある）
+        const clone = res.clone()
+        const text  = await clone.text()
+        if (text.includes('chart') || text.includes('quoteResponse')) {
+          // 正しいYahoo Finance JSONなのでtextからResponseを再構築
+          return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+      }
+    } catch { /* 次のプロキシへ */ }
+  }
 
-  // 3. query2 直接
-  try {
-    const res = await fetch(YAHOO_BASE2 + path, {
-      signal: _makeSignal(8000),
-      headers: { 'Accept': 'application/json' },
-    })
-    if (res.ok) return res
-  } catch { /* fallthrough */ }
-
-  // 4. allorigins CORSプロキシ経由（最終手段）
-  const encoded = encodeURIComponent(YAHOO_BASE + path)
-  const res = await fetch(`https://api.allorigins.win/raw?url=${encoded}`, {
-    signal: _makeSignal(12000),
-    headers: { 'Accept': 'application/json' },
-  })
-  if (!res.ok) throw new Error('Yahoo Finance HTTP ' + res.status)
-  return res
+  throw new Error('全プロキシ失敗: Yahoo Finance に接続できませんでした')
 }
 
 const _quoteCache = new Map<string, { ts: number; data: StockData }>()
